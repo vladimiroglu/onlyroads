@@ -695,10 +695,10 @@ async function buildPosterCanvas(mapCanvas){
   const big=String(unlocked);
   const bigW=ctx.measureText(big).width;
   const baseY=topPad+168;
-  ctx.fillText(big, leftPad + 200, baseY);
+  ctx.fillText(big, leftPad + 400, topPad + 64);
 
   ctx.font='800 64px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
-  ctx.fillText('/ 50', leftPad + bigW + 18 + 250, baseY - 28);
+  ctx.fillText('/ 50', leftPad + bigW + 18 + 400, topPad + 64 + 64 + 8);
 
   ctx.font='700 64px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
   ctx.textBaseline='top';
@@ -749,6 +749,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
+
 
 
 
