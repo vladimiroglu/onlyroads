@@ -695,15 +695,15 @@ async function buildPosterCanvas(mapCanvas){
   const big=String(unlocked);
   const bigW=ctx.measureText(big).width;
   const baseY=topPad+168;
-  ctx.fillText(big, leftPad, baseY);
+  ctx.fillText(big, leftPad + 80, baseY);
 
   ctx.font='800 64px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
-  ctx.fillText('/ 50', leftPad + bigW + 18, baseY - 28);
+  ctx.fillText('/ 50', leftPad + bigW + 18 + 100, baseY - 28);
 
   ctx.font='700 64px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
   ctx.textBaseline='top';
-  ctx.fillText('STATES', leftPad, topPad);
-  ctx.fillText('UNLOCKED', leftPad, topPad + 64 + 8);
+  ctx.fillText('STATES', leftPad, topPad + 64);
+  ctx.fillText('UNLOCKED', leftPad, topPad + 64 + 64 + 8);
 
   /* Map card */
   const cardMarginX=48, cardX=leftPad, cardY=topPad+220, cardW=POSTER_W-leftPad-cardMarginX, cardH=POSTER_H*0.32, radius=28;
@@ -749,4 +749,5 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
+
 
