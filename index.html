@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>OnlyRoads — Beta v0.067</title>
+<title>OnlyRoads — Beta</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -35,12 +35,14 @@ header.is-hidden{transform:translateY(-100%)} header.force-show{transform:transl
 /* Layout */
 .wrap{max-width:980px;margin:0 auto;padding:8px 12px 18px}
 .map-wrap{position:relative}
-#map{
-  width:100%;aspect-ratio:21/7;min-height:200px;border-radius:14px;border:1px solid #233a6b;background:#0e2349;margin:8px 0 6px;overflow:hidden;position:relative
-}
+#map{width:100%;aspect-ratio:21/7;min-height:200px;border-radius:14px;border:1px solid #233a6b;background:#0e2349;margin:8px 0 6px;overflow:hidden;position:relative}
 #mapCounter{position:absolute;left:12px;bottom:12px;background:rgba(8,23,51,.88);color:#fff;border:1px solid #ffffff2d;padding:6px 10px;border-radius:10px;font:800 clamp(14px,3.8vw,18px)/1 Impact,system-ui,sans-serif;letter-spacing:.5px}
 #fabAddTrip{position:absolute;right:12px;bottom:12px;z-index:2;width:46px;height:46px;border-radius:14px;border:1px solid #284079;background:#16306a;color:#fff;font-size:24px;font-weight:700;display:grid;place-items:center;cursor:pointer}
 #fabAddTrip:hover{background:#1a3a80}
+
+/* Hide badges while exporting poster */
+body.exporting #mapCounter,
+body.exporting #fabAddTrip{visibility:hidden}
 
 /* Clickable hint */
 #belowHint{display:none;margin:8px 2px 12px;padding:16px 14px;border:2px dotted var(--panelBorder);border-radius:12px;background:transparent;color:var(--ink-dim);text-align:center;font-size:14px;letter-spacing:.2px;cursor:pointer;user-select:none}
@@ -77,7 +79,7 @@ header.is-hidden{transform:translateY(-100%)} header.force-show{transform:transl
 /* Legend (click-to-switch) */
 .legend{display:none;flex-wrap:wrap;gap:10px;margin:6px 2px 0}
 .legend.show{display:flex}
-.legend .item{display:flex;align-items:center;gap:8px;background:#0f2550;border:1px solid #223a6c;padding:6px 10px;border-radius:12px;font-size:13px;color:#var(--ink-dim);cursor:pointer;outline:none}
+.legend .item{display:flex;align-items:center;gap:8px;background:#0f2550;border:1px solid #223a6c;padding:6px 10px;border-radius:12px;font-size:13px;color:var(--ink-dim);cursor:pointer;outline:none}
 .legend .item:hover{background:#153063}
 .legend .item.is-active{border-color:#3a58a2;color:#e8f0ff;box-shadow:0 0 0 2px #3a58a215 inset}
 .legend .chip{width:14px;height:14px;border-radius:50%;border:1px solid #fff6}
@@ -103,17 +105,17 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 .cp-btn{background:#1a2f5a;border:1px solid var(--panelBorder);color:#fff;border-radius:10px;padding:8px 12px;cursor:pointer}
 .cp-btn:hover,.cp-chip:hover{background:#21366a}
 
-/* ========= Visual effects ========= */
-/* 1) State coast glow (CSS drop-shadows on the glow layer paths) */
+/* Visual effects */
+/* coast glow */
 .or-states-glow path{
   filter:
     drop-shadow(0 0 2px rgba(255,255,255,.65))
     drop-shadow(0 0 6px rgba(255,255,255,.35))
     drop-shadow(0 0 12px rgba(255,255,255,.22));
 }
-/* 3) Pin glow */
+/* pin glow */
 .or-marker-glow{ filter:url(#or-soft-glow); }
-/* 7) Inner shadow for visited states */
+/* inner shadow on visited states */
 .or-state-inner{ filter:url(#or-inner-shadow); }
 </style>
 </head>
@@ -121,12 +123,10 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 <!-- SVG filters -->
 <svg width="0" height="0" style="position:absolute;left:-9999px;top:-9999px" aria-hidden="true" focusable="false">
   <defs>
-    <!-- Soft outer glow for pins -->
     <filter id="or-soft-glow" x="-50%" y="-50%" width="200%" height="200%">
       <feGaussianBlur stdDeviation="2.8" result="blur"/>
       <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
-    <!-- Inner shadow (inset) for visited states -->
     <filter id="or-inner-shadow" x="-50%" y="-50%" width="200%" height="200%">
       <feOffset dx="0" dy="1" in="SourceAlpha" result="off"/>
       <feGaussianBlur in="off" stdDeviation="2.5" result="blur"/>
@@ -148,8 +148,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="2.2"/><circle cx="12" cy="12" r="2.2"/><circle cx="19" cy="12" r="2.2"/></svg>
     </button>
     <div class="menu" id="menu">
-      <div class="mi" id="miExport">Export image (map only)</div>
-      <div class="mi" id="miExportPoster">Export poster (shareable)</div>
+      <div class="mi" id="miSave">Save image</div>
       <div class="mi" id="miShare">Share link</div>
       <div class="mi" id="miFeedback">Leave feedback</div>
     </div>
@@ -181,7 +180,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
   <div class="legend" id="legend"></div>
 </div>
 
-<footer>OnlyRoads Beta v0.065 - Emin's personal project</footer>
+<footer id="footerNote"></footer>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <!-- Color picker popover -->
@@ -194,6 +193,13 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 </div>
 
 <script>
+/* ===== Version constant ===== */
+const VERSION = '0.068';
+document.addEventListener('DOMContentLoaded', ()=>{
+  document.title = `OnlyRoads — Beta v${VERSION}`;
+  document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
+});
+
 /* ===== Constants / helpers ===== */
 const STATE_ABBR={"Alabama":"AL","Alaska":"AK","Arizona":"AZ","Arkansas":"AR","California":"CA","Colorado":"CO","Connecticut":"CT","Delaware":"DE","District of Columbia":"DC","Florida":"FL","Georgia":"GA","Hawaii":"HI","Idaho":"ID","Illinois":"IL","Indiana":"IN","Iowa":"IA","Kansas":"KS","Kentucky":"KY","Louisiana":"LA","Maine":"ME","Maryland":"MD","Massachusetts":"MA","Michigan":"MI","Minnesota":"MN","Mississippi":"MS","Missouri":"MO","Montana":"MT","Nebraska":"NE","Nevada":"NV","New Hampshire":"NH","New Jersey":"NJ","New Mexico":"NM","New York":"NY","North Carolina":"NC","North Dakota":"ND","Ohio":"OH","Oklahoma":"OK","Oregon":"OR","Pennsylvania":"PA","Rhode Island":"RI","South Carolina":"SC","South Dakota":"SD","Tennessee":"TN","Texas":"TX","Utah":"UT","Vermont":"VT","Virginia":"VA","Washington":"WA","West Virginia":"WV","Wisconsin":"WI","Wyoming":"WY"};
 const ABBR_TO_NAME=Object.fromEntries(Object.entries(STATE_ABBR).map(([k,v])=>[v,k]));
@@ -207,8 +213,11 @@ const PALETTE=['#45a3ff','#ff6b6b','#ffd166','#06d6a0','#c792ea','#ff9f1c','#00b
 const DOT_RADIUS=3.5, DOT_WEIGHT=1, RED='#ff0000', GREEN='#30e6b6';
 const CURVE_GAIN=1.25;
 
-/* Poster defaults (kept) */
-const POSTER_W=1080, POSTER_H=1920, POSTER_BG='#0b1c3a', WATERMARK_TEXT='ONLYROADS';
+/* Poster defaults */
+const POSTER_W = 1080, POSTER_H = 1920;
+const POSTER_BG = '#0b1c3a';
+const CARD_BG = '#0f2550';
+const WATERMARK_TEXT = 'ONLYROADS';
 
 const mapCounter=document.getElementById('mapCounter');
 const belowHint=document.getElementById('belowHint');
@@ -260,22 +269,19 @@ document.addEventListener('click',e=>{
   if(outside&&menu.classList.contains('show')){ menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false); }
 });
 
-/* Export map image */
-document.getElementById('miExport').addEventListener('click', async ()=>{
-  menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
-  const canvas=await html2canvas(document.getElementById('mapWrap'),{useCORS:true,backgroundColor:null,scale:2});
-  const a=document.createElement('a'); a.href=canvas.toDataURL('image/png'); a.download=`onlyroads_map_${Date.now()}.png`; a.click(); toast('Map image exported');
-});
-
-/* Export poster */
-document.getElementById('miExportPoster').addEventListener('click', async ()=>{
+/* ===== “Save image” (poster) ===== */
+document.getElementById('miSave').addEventListener('click', async ()=>{
   menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
   try{
-    const mapShot=await html2canvas(document.getElementById('mapWrap'),{useCORS:true,backgroundColor:null,scale:2});
+    document.body.classList.add('exporting'); // hide badges over map
+    await new Promise(r=>requestAnimationFrame(r));
+    const mapShot=await html2canvas(document.getElementById('map'),{useCORS:true,backgroundColor:null,scale:2});
+    document.body.classList.remove('exporting');
+
     const poster=await buildPosterCanvas(mapShot);
     const a=document.createElement('a'); a.href=poster.toDataURL('image/png'); a.download=`onlyroads_poster_${Date.now()}.png`; a.click();
-    toast('Poster exported');
-  }catch(e){ console.error(e); toast('Could not create poster'); }
+    toast('Image saved');
+  }catch(e){ console.error(e); toast('Could not create image'); }
 });
 
 /* Share & feedback */
@@ -424,7 +430,7 @@ function initMap(){
     .then(r=>r.json()).then(geo=>{
       const conus=geo.features.filter(f=>!["Alaska","Hawaii","Puerto Rico"].includes(f.properties.name));
 
-      /* Coast glow layer (thin stroke + drop-shadows via CSS) */
+      /* Coast glow layer */
       statesGlowLayer=L.geoJSON({type:"FeatureCollection",features:conus},{
         pane:'statesGlowPane',
         style:()=>({color:'#ffffff',weight:1,opacity:0.9,fillOpacity:0,className:'or-states-glow'}),
@@ -443,14 +449,12 @@ function initMap(){
 }
 function fitUS(){ if(conusBounds) map.fitBounds(conusBounds.pad(0.01),{animate:false}); }
 
-/* Inner shadow class toggle for visited states */
+/* Inner shadow class for visited states */
 function setStateInnerShadow(name, on){
   const layer=stateLayerByName[name]; if(!layer) return;
-  const el = layer.getElement && layer.getElement(); // path element
+  const el = layer.getElement && layer.getElement();
   if(el){ el.classList.toggle('or-state-inner', !!on); }
 }
-
-/* Apply selected/visited styles */
 function applyStateStyle(name,selected){
   const layer=stateLayerByName[name]; if(!layer) return;
   if(selected){
@@ -458,7 +462,7 @@ function applyStateStyle(name,selected){
   }else{
     layer.setStyle({fillColor:'#0b1c3a',fillOpacity:1,color:'#ffffff',weight:1});
   }
-  setStateInnerShadow(name, selected); // add/remove inner shadow
+  setStateInnerShadow(name, selected);
 }
 function refreshAllStateStyles(){ Object.keys(stateLayerByName).forEach(n=>applyStateStyle(n,unlockedStates.has(n))); }
 
@@ -513,7 +517,7 @@ function updateMap(){
     });
   });
 
-  // routes (no glow layer)
+  // routes
   trips.forEach(t=>{
     if(t.cities.length>1){
       const pts=t.cities.map(c=>[c.lat,c.lon]);
@@ -580,7 +584,7 @@ function updateShareURL(){
   const url=new URL(location.href); url.hash='s='+b64; history.replaceState(null,'',url.toString()); return url.toString();
 }
 
-/* ===== Poster utils (kept) ===== */
+/* ===== Poster helpers ===== */
 function haversineMiles(lat1,lon1,lat2,lon2){
   const R=3958.7613, toRad=d=>d*Math.PI/180;
   const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
@@ -594,32 +598,61 @@ function totalTripMiles(trip){
 }
 function formatMiles(m){ return m>=1000 ? `${(m/1000).toFixed(1)}k miles` : `${Math.round(m/10)*10} miles`; }
 
+/* Draw rounded rect helper */
+function roundRect(ctx,x,y,w,h,r){ const rr=Math.min(r, w/2, h/2); ctx.beginPath(); ctx.moveTo(x+rr,y); ctx.arcTo(x+w,y,x+w,y+h,rr); ctx.arcTo(x+w,y+h,x,y+h,rr); ctx.arcTo(x,y+h,x,y,rr); ctx.arcTo(x,y,x+w,y,rr); ctx.closePath(); }
+
+/* Build poster */
 async function buildPosterCanvas(mapCanvas){
   const canvas=document.createElement('canvas'); canvas.width=POSTER_W; canvas.height=POSTER_H;
   const ctx=canvas.getContext('2d');
   ctx.fillStyle=POSTER_BG; ctx.fillRect(0,0,POSTER_W,POSTER_H);
 
   const unlocked = unlockedStates.size || 0;
-  ctx.fillStyle='#eaf2ff'; ctx.textBaseline='top';
-  const leftPad=64, topPad=64, lineGap=8;
+
+  /* Header: neat count */
+  const leftPad=64, topPad=64;
+  ctx.fillStyle='#eaf2ff'; ctx.textBaseline='alphabetic';
+  ctx.font='900 168px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
+  const big=String(unlocked);
+  const bigW=ctx.measureText(big).width;
+  const baseY=topPad+168; // baseline
+  ctx.fillText(big, leftPad, baseY);
+
+  ctx.font='800 64px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
+  ctx.fillText('/ 50', leftPad + bigW + 18, baseY - 28); // slightly raised for visual balance
+
   ctx.font='700 64px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
+  ctx.textBaseline='top';
   ctx.fillText('STATES', leftPad, topPad);
-  ctx.fillText('UNLOCKED', leftPad, topPad+64+lineGap);
-  ctx.font='900 160px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
-  const bigText=`${unlocked}`; ctx.fillText(bigText, leftPad+360, topPad-16);
-  ctx.font='700 56px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
-  ctx.fillText('/ 50', leftPad+360 + ctx.measureText(bigText).width + 16, topPad+32);
+  ctx.fillText('UNLOCKED', leftPad, topPad + 64 + 8);
 
-  const mapTargetW=POSTER_W-160, ratio=mapCanvas.width/mapCanvas.height, mapW=mapTargetW, mapH=mapW/ratio, mapX=(POSTER_W-mapW)/2, mapY=420;
-  ctx.save(); ctx.shadowColor='rgba(0,0,0,0.55)'; ctx.shadowBlur=60; ctx.shadowOffsetY=18; ctx.drawImage(mapCanvas,mapX,mapY,mapW,mapH); ctx.restore();
+  /* Map card */
+  const cardMarginX=48, cardX=leftPad, cardY=topPad+220, cardW=POSTER_W-leftPad-cardMarginX, cardH=POSTER_H*0.32, radius=28;
+  ctx.save();
+  // card shadow
+  ctx.shadowColor='rgba(0,0,0,0.5)'; ctx.shadowBlur=40; ctx.shadowOffsetY=18;
+  roundRect(ctx,cardX,cardY,cardW,cardH,radius); ctx.fillStyle=CARD_BG; ctx.fill();
+  ctx.restore();
 
-  const sectionY=mapY+mapH+60; ctx.fillStyle='#eaf2ff'; ctx.font='900 54px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif'; ctx.fillText('Highlighted  road trips:', leftPad, sectionY);
+  // clip to card and draw centered map image with padding
+  const pad=28; const innerW=cardW-2*pad, innerH=cardH-2*pad; const mapRatio=mapCanvas.width/mapCanvas.height;
+  let drawW=innerW, drawH=innerW/mapRatio;
+  if(drawH>innerH){ drawH=innerH; drawW=innerH*mapRatio; }
+  const drawX=cardX + (cardW-drawW)/2; const drawY=cardY + (cardH-drawH)/2;
+
+  ctx.save(); roundRect(ctx,cardX,cardY,cardW,cardH,radius); ctx.clip(); ctx.drawImage(mapCanvas, drawX, drawY, drawW, drawH); ctx.restore();
+
+  /* Trip list */
+  const sectionY=cardY+cardH+48;
+  ctx.fillStyle='#eaf2ff'; ctx.font='900 54px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif'; ctx.fillText('Highlighted  road trips:', leftPad, sectionY);
   const itemsYStart=sectionY+72; ctx.font='500 36px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif'; const bulletGap=54, colorBarW=36, colorBarH=8;
 
   const tripSummaries=trips.map(t=>({id:t.id,color:t.color,name:t.name,miles:totalTripMiles(t)})).sort((a,b)=>b.miles-a.miles);
   tripSummaries.forEach((row,idx)=>{ const y=itemsYStart+idx*bulletGap; ctx.fillStyle=row.color; ctx.fillRect(leftPad,y+16,colorBarW,colorBarH); ctx.fillStyle='#e6ecff'; ctx.fillText(`${formatMiles(row.miles)}: ${row.name}`, leftPad+colorBarW+14, y); });
 
+  /* Watermark */
   const wm=WATERMARK_TEXT; ctx.save(); ctx.translate(POSTER_W-26, POSTER_H-120); ctx.rotate(-Math.PI/2); ctx.fillStyle='#ffffff17'; ctx.font='900 120px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif'; ctx.fillText(wm,0,0); ctx.restore();
+
   return canvas;
 }
 
