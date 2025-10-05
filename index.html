@@ -84,8 +84,10 @@ body.exporting #fabAddTrip{visibility:hidden}
 .legend .item.is-active{border-color:#3a58a2;color:#e8f0ff;box-shadow:0 0 0 2px #3a58a215 inset}
 .legend .chip{width:14px;height:14px;border-radius:50%;border:1px solid #fff6}
 
-/* Menu (no icons) */
-.menu{position:absolute;right:12px;top:56px;z-index:11000;background:#0f2550;border:1px solid #223a6c;border-radius:12px;min-width:230px;display:none;box-shadow:0 12px 30px rgba(0,0,0,.35);overflow:hidden}
+/* Menu (anchored to kebab) */
+.menu{position:fixed; /* will be positioned in JS under the kebab */
+  z-index:11000;background:#0f2550;border:1px solid #223a6c;border-radius:12px;
+  min-width:230px;display:none;box-shadow:0 12px 30px rgba(0,0,0,.35);overflow:hidden}
 .menu.show{display:block}
 .mi{padding:10px 14px;border-bottom:1px solid #193566;cursor:pointer;font-size:14.5px;letter-spacing:.2px}
 .mi:last-child{border-bottom:none}
@@ -106,17 +108,37 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 .cp-btn:hover,.cp-chip:hover{background:#21366a}
 
 /* Visual effects */
-/* coast glow */
 .or-states-glow path{
   filter:
     drop-shadow(0 0 2px rgba(255,255,255,.65))
     drop-shadow(0 0 6px rgba(255,255,255,.35))
     drop-shadow(0 0 12px rgba(255,255,255,.22));
 }
-/* pin glow */
 .or-marker-glow{ filter:url(#or-soft-glow); }
-/* inner shadow on visited states */
 .or-state-inner{ filter:url(#or-inner-shadow); }
+
+/* ===== Desktop-only tweaks (keep mobile perfect) ===== */
+@media (min-width:700px){
+  /* 1) Brand & counter readability on desktop */
+  .brand{
+    letter-spacing:.8px;
+    font-stretch:condensed;
+    transform:scaleX(.92);
+    transform-origin:left center;
+  }
+  #mapCounter{
+    font-size:16px;
+    letter-spacing:.4px;
+    padding:5px 9px;
+  }
+}
+@media (min-width:900px){
+  /* 2) Taller map on desktop */
+  #map{
+    aspect-ratio:21/10;   /* was 21/7 — makes it noticeably taller */
+    min-height:460px;     /* ensures good height on wide screens */
+  }
+}
 </style>
 </head>
 <body>
@@ -194,7 +216,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.068';
+const VERSION = '0.069';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -257,13 +279,32 @@ const kebabBtn=document.getElementById('kebabBtn'); const menu=document.getEleme
   window.OnlyRoadsHeader={forceShow(on=true){ headerEl.classList.toggle('force-show',!!on); if(on) headerEl.classList.remove('is-hidden'); }, show, hide};
 })();
 
-/* Menu */
+/* Anchored menu positioning */
+function positionMenu(){
+  if(!menu.classList.contains('show')) return;
+  const r=kebabBtn.getBoundingClientRect();
+  // place menu's top aligned to button bottom, right-aligned with button
+  const margin=8;
+  const left=Math.min(
+    Math.max(8, r.right - menu.offsetWidth),
+    window.innerWidth - menu.offsetWidth - 8
+  );
+  const top=Math.min(
+    r.bottom + margin,
+    window.innerHeight - menu.offsetHeight - 8
+  );
+  menu.style.left = `${left}px`;
+  menu.style.top  = `${top}px`;
+}
 kebabBtn.addEventListener('click',(e)=>{
   e.stopPropagation();
   const willShow=!menu.classList.contains('show');
-  menu.classList.toggle('show');
+  if(willShow){ menu.classList.add('show'); positionMenu(); }
+  else { menu.classList.remove('show'); }
   window.OnlyRoadsHeader?.forceShow(willShow);
 });
+window.addEventListener('resize', positionMenu);
+window.addEventListener('scroll', positionMenu, {passive:true});
 document.addEventListener('click',e=>{
   const outside=!menu.contains(e.target)&&e.target!==kebabBtn;
   if(outside&&menu.classList.contains('show')){ menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false); }
@@ -279,7 +320,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     document.body.classList.remove('exporting');
 
     const poster=await buildPosterCanvas(mapShot);
-    const a=document.createElement('a'); a.href=poster.toDataURL('image/png'); a.download=`onlyroads_poster_${Date.now()}.png`; a.click();
+    const a=document.createElement('a'); a.href=poster.toDataURL('image/png'); a.download=`onlyroads_${VERSION}_poster_${Date.now()}.png`; a.click();
     toast('Image saved');
   }catch(e){ console.error(e); toast('Could not create image'); }
 });
@@ -652,6 +693,12 @@ async function buildPosterCanvas(mapCanvas){
 
   /* Watermark */
   const wm=WATERMARK_TEXT; ctx.save(); ctx.translate(POSTER_W-26, POSTER_H-120); ctx.rotate(-Math.PI/2); ctx.fillStyle='#ffffff17'; ctx.font='900 120px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif'; ctx.fillText(wm,0,0); ctx.restore();
+
+  /* Tiny version caption */
+  ctx.fillStyle='#9fb0df85';
+  ctx.font='500 22px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif';
+  ctx.textAlign='center';
+  ctx.fillText(`OnlyRoads Beta v${VERSION}`, POSTER_W/2, POSTER_H-24);
 
   return canvas;
 }
