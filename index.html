@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>OnlyRoads — Beta v0.067</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-curve"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+<style>
+:root{
+  --bg:#0b1c3a; --header:#081733;
+  --ink:#e6ecff; --ink-dim:#c9d6ff;
+  --panel:#0e2349; --panelBorder:#2a3c67;
+  --accent:#45a3ff;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+
+/* Header reveal */
+header{position:sticky;top:0;background:var(--header);border-bottom:1px solid #1f3159;box-shadow:0 6px 18px rgba(0,0,0,.28);z-index:10000;transition:transform 220ms ease;will-change:transform}
+header.is-hidden{transform:translateY(-100%)} header.force-show{transform:translateY(0)!important}
+.header-inner{max-width:980px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:10px 12px 8px}
+.brand{font-family:Impact,Haettenschweiler,"Arial Black",Anton,system-ui,sans-serif;font-weight:800;letter-spacing:.3px;font-size:clamp(18px,4.8vw,26px)}
+
+/* Kebab (SVG) */
+.icon-btn{width:44px;height:44px;border-radius:12px;border:1px solid #263a6a;background:#112553;color:#fff;display:grid;place-items:center;cursor:pointer}
+.icon-btn:hover{background:#153063}
+.icon-btn svg{width:20px;height:20px;display:block;fill:#fff;opacity:.95}
+
+/* Layout */
+.wrap{max-width:980px;margin:0 auto;padding:8px 12px 18px}
+.map-wrap{position:relative}
+#map{
+  width:100%;aspect-ratio:21/7;min-height:200px;border-radius:14px;border:1px solid #233a6b;background:#0e2349;margin:8px 0 6px;overflow:hidden;position:relative
+}
+#mapCounter{position:absolute;left:12px;bottom:12px;background:rgba(8,23,51,.88);color:#fff;border:1px solid #ffffff2d;padding:6px 10px;border-radius:10px;font:800 clamp(14px,3.8vw,18px)/1 Impact,system-ui,sans-serif;letter-spacing:.5px}
+#fabAddTrip{position:absolute;right:12px;bottom:12px;z-index:2;width:46px;height:46px;border-radius:14px;border:1px solid #284079;background:#16306a;color:#fff;font-size:24px;font-weight:700;display:grid;place-items:center;cursor:pointer}
+#fabAddTrip:hover{background:#1a3a80}
+
+/* Clickable hint */
+#belowHint{display:none;margin:8px 2px 12px;padding:16px 14px;border:2px dotted var(--panelBorder);border-radius:12px;background:transparent;color:var(--ink-dim);text-align:center;font-size:14px;letter-spacing:.2px;cursor:pointer;user-select:none}
+#belowHint:active{transform:scale(.99)}
+
+/* Trip bar — name + 3 squares on right */
+.tripbar{display:none;align-items:center;gap:10px;margin:8px 0;flex-wrap:nowrap}
+.tripbar.show{display:flex}
+.tripbar .tripname{flex:1;min-width:0;background:var(--panel);border:1px solid var(--panelBorder);color:var(--ink);border-radius:12px;padding:10px 12px;font-size:15px;height:42px;line-height:20px}
+.mini{width:42px;height:42px;border-radius:12px;border:1px solid var(--panelBorder);background:#1a2f5a;color:#fff;display:grid;place-items:center;cursor:pointer;flex:0 0 auto}
+.mini:hover{background:#21366a}
+.mini .color-chip{width:22px;height:22px;border-radius:6px;border:1px solid #ffffff55;display:block}
+.mini svg{width:18px;height:18px;display:block;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* City controls + autocomplete */
+.controls{display:none;gap:10px;position:relative}
+.controls.show{display:flex}
+.controls input{flex:1;background:var(--panel);border:1px solid var(--panelBorder);color:var(--ink);border-radius:10px;padding:12px 14px;font-size:16px}
+.ac{position:absolute;top:48px;left:0;right:0;z-index:5000;background:var(--panel);border:1px solid var(--panelBorder);border-radius:10px;max-height:260px;overflow:auto;display:none;box-shadow:0 12px 30px rgba(0,0,0,.35)}
+.ac.show{display:block}
+.ac-item{padding:10px 12px;border-bottom:1px solid #192d56;cursor:pointer}
+.ac-item:hover{background:#153063}
+
+/* City list */
+.list{display:none;margin-top:10px;border:1px dashed var(--panelBorder);border-radius:12px;padding:8px;min-height:60px;position:relative}
+.list.show{display:block}
+.li{display:flex;align-items:center;gap:10px;background:#102652;border:1px solid #233a6b;color:var(--ink);padding:10px 12px;border-radius:10px;margin:6px 0;cursor:grab}
+.li .handle{font-size:18px;opacity:.8}
+.li .name{flex:1}
+.li .remove{background:transparent;border:none;color:#cdd6ff;font-size:18px;cursor:pointer}
+.li.li-selected{background:#224080}
+.empty-list-hint{position:absolute;inset:0;display:none;place-items:center;color:#c9d6ff;opacity:.9;font-size:13px}
+
+/* Legend (click-to-switch) */
+.legend{display:none;flex-wrap:wrap;gap:10px;margin:6px 2px 0}
+.legend.show{display:flex}
+.legend .item{display:flex;align-items:center;gap:8px;background:#0f2550;border:1px solid #223a6c;padding:6px 10px;border-radius:12px;font-size:13px;color:#var(--ink-dim);cursor:pointer;outline:none}
+.legend .item:hover{background:#153063}
+.legend .item.is-active{border-color:#3a58a2;color:#e8f0ff;box-shadow:0 0 0 2px #3a58a215 inset}
+.legend .chip{width:14px;height:14px;border-radius:50%;border:1px solid #fff6}
+
+/* Menu (no icons) */
+.menu{position:absolute;right:12px;top:56px;z-index:11000;background:#0f2550;border:1px solid #223a6c;border-radius:12px;min-width:230px;display:none;box-shadow:0 12px 30px rgba(0,0,0,.35);overflow:hidden}
+.menu.show{display:block}
+.mi{padding:10px 14px;border-bottom:1px solid #193566;cursor:pointer;font-size:14.5px;letter-spacing:.2px}
+.mi:last-child{border-bottom:none}
+.mi:hover{background:#153063}
+
+.toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#102652;color:#fff;border:1px solid #223a6c;border-radius:10px;padding:10px 14px;z-index:12000;display:none}
+.toast.show{display:block}
+footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
+
+/* Color picker popover */
+.cp-pop{position:absolute;z-index:12000;background:#0f2550;border:1px solid #223a6c;border-radius:12px;padding:10px;box-shadow:0 12px 30px rgba(0,0,0,.35);width:min(260px, 92vw)}
+.cp-row{display:flex;flex-wrap:wrap;gap:10px}
+.cp-swatch{width:28px;height:28px;border-radius:8px;border:1px solid #ffffff55;cursor:pointer}
+.cp-actions{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
+.cp-chip{display:inline-grid;grid-auto-flow:column;gap:8px;align-items:center;background:#1a2f5a;border:1px solid var(--panelBorder);color:#fff;border-radius:10px;padding:8px 10px;cursor:pointer}
+.cp-chip input[type="color"]{appearance:none;border:none;background:transparent;width:0;height:0;padding:0;margin:0}
+.cp-btn{background:#1a2f5a;border:1px solid var(--panelBorder);color:#fff;border-radius:10px;padding:8px 12px;cursor:pointer}
+.cp-btn:hover,.cp-chip:hover{background:#21366a}
+
+/* ========= Visual effects ========= */
+/* 1) State coast glow (CSS drop-shadows on the glow layer paths) */
+.or-states-glow path{
+  filter:
+    drop-shadow(0 0 2px rgba(255,255,255,.65))
+    drop-shadow(0 0 6px rgba(255,255,255,.35))
+    drop-shadow(0 0 12px rgba(255,255,255,.22));
+}
+/* 3) Pin glow */
+.or-marker-glow{ filter:url(#or-soft-glow); }
+/* 7) Inner shadow for visited states */
+.or-state-inner{ filter:url(#or-inner-shadow); }
+</style>
+</head>
+<body>
+<!-- SVG filters -->
+<svg width="0" height="0" style="position:absolute;left:-9999px;top:-9999px" aria-hidden="true" focusable="false">
+  <defs>
+    <!-- Soft outer glow for pins -->
+    <filter id="or-soft-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.8" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <!-- Inner shadow (inset) for visited states -->
+    <filter id="or-inner-shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feOffset dx="0" dy="1" in="SourceAlpha" result="off"/>
+      <feGaussianBlur in="off" stdDeviation="2.5" result="blur"/>
+      <feColorMatrix in="blur" type="matrix"
+        values="0 0 0 0 0
+                0 0 0 0 0
+                0 0 0 0 0
+                0 0 0 .55 0" result="shadow"/>
+      <feComposite in="shadow" in2="SourceAlpha" operator="in" result="inner"/>
+      <feComposite in="SourceGraphic" in2="inner" operator="over"/>
+    </filter>
+  </defs>
+</svg>
+
+<header>
+  <div class="header-inner">
+    <div class="brand">OnlyRoads</div>
+    <button class="icon-btn" id="kebabBtn" aria-label="More">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="2.2"/><circle cx="12" cy="12" r="2.2"/><circle cx="19" cy="12" r="2.2"/></svg>
+    </button>
+    <div class="menu" id="menu">
+      <div class="mi" id="miExport">Export image (map only)</div>
+      <div class="mi" id="miExportPoster">Export poster (shareable)</div>
+      <div class="mi" id="miShare">Share link</div>
+      <div class="mi" id="miFeedback">Leave feedback</div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="map-wrap" id="mapWrap">
+    <div id="map"></div>
+    <div id="mapCounter">0/50</div>
+    <button id="fabAddTrip" title="New Trip" aria-label="New Trip">+</button>
+  </div>
+
+  <div id="belowHint" role="button" tabindex="0" aria-label="Create a trip">Tap + to create your first trip</div>
+
+  <div class="tripbar" id="tripBar">
+    <select id="tripSelect" class="tripname" aria-label="Select trip"></select>
+    <button class="mini" id="tripColorBtn" title="Trip color" aria-label="Trip color"><span id="tripColorChip" class="color-chip"></span></button>
+    <button class="mini" id="renameTripBtn" title="Rename trip" aria-label="Rename trip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h4l11-11-4-4L3 17v4z"/><path d="M14 6l4 4"/></svg></button>
+    <button class="mini" id="deleteTripBtn" title="Delete trip" aria-label="Delete trip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/></svg></button>
+  </div>
+
+  <div class="controls" id="controls">
+    <input id="cityInput" placeholder="Type a U.S. city to add" aria-label="City search"/>
+    <div id="ac" class="ac" role="listbox" aria-label="City results"></div>
+  </div>
+
+  <div class="list" id="cityList"><div id="emptyListHint" class="empty-list-hint"></div></div>
+  <div class="legend" id="legend"></div>
+</div>
+
+<footer>OnlyRoads Beta v0.065 - Emin's personal project</footer>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- Color picker popover -->
+<div id="colorPicker" class="cp-pop" hidden>
+  <div class="cp-row" id="cpSwatches"></div>
+  <div class="cp-actions">
+    <label class="cp-chip"><input type="color" id="cpCustom" aria-label="Custom color"/>Custom…</label>
+    <button id="cpClose" class="cp-btn">Done</button>
+  </div>
+</div>
+
+<script>
+/* ===== Constants / helpers ===== */
+const STATE_ABBR={"Alabama":"AL","Alaska":"AK","Arizona":"AZ","Arkansas":"AR","California":"CA","Colorado":"CO","Connecticut":"CT","Delaware":"DE","District of Columbia":"DC","Florida":"FL","Georgia":"GA","Hawaii":"HI","Idaho":"ID","Illinois":"IL","Indiana":"IN","Iowa":"IA","Kansas":"KS","Kentucky":"KY","Louisiana":"LA","Maine":"ME","Maryland":"MD","Massachusetts":"MA","Michigan":"MI","Minnesota":"MN","Mississippi":"MS","Missouri":"MO","Montana":"MT","Nebraska":"NE","Nevada":"NV","New Hampshire":"NH","New Jersey":"NJ","New Mexico":"NM","New York":"NY","North Carolina":"NC","North Dakota":"ND","Ohio":"OH","Oklahoma":"OK","Oregon":"OR","Pennsylvania":"PA","Rhode Island":"RI","South Carolina":"SC","South Dakota":"SD","Tennessee":"TN","Texas":"TX","Utah":"UT","Vermont":"VT","Virginia":"VA","Washington":"WA","West Virginia":"WV","Wisconsin":"WI","Wyoming":"WY"};
+const ABBR_TO_NAME=Object.fromEntries(Object.entries(STATE_ABBR).map(([k,v])=>[v,k]));
+function canonicalStateName(n){ if(!n) return null; const s=String(n).trim();
+  if(STATE_ABBR[s]) return s; const ab=s.toUpperCase(); if(ABBR_TO_NAME[ab]) return ABBR_TO_NAME[ab];
+  if(["washington, d.c.","district of columbia","washington dc"].includes(s.toLowerCase())) return "District of Columbia";
+  return s;
+}
+const PALETTE=['#45a3ff','#ff6b6b','#ffd166','#06d6a0','#c792ea','#ff9f1c','#00bcd4','#ef476f','#8ac926','#a0a0ff'];
+
+const DOT_RADIUS=3.5, DOT_WEIGHT=1, RED='#ff0000', GREEN='#30e6b6';
+const CURVE_GAIN=1.25;
+
+/* Poster defaults (kept) */
+const POSTER_W=1080, POSTER_H=1920, POSTER_BG='#0b1c3a', WATERMARK_TEXT='ONLYROADS';
+
+const mapCounter=document.getElementById('mapCounter');
+const belowHint=document.getElementById('belowHint');
+const tripBar=document.getElementById('tripBar'),
+      tripSelect=document.getElementById('tripSelect'),
+      tripColorChip=document.getElementById('tripColorChip'),
+      tripColorBtn=document.getElementById('tripColorBtn');
+
+const controls=document.getElementById('controls'),
+      input=document.getElementById('cityInput'),
+      ac=document.getElementById('ac');
+
+const list=document.getElementById('cityList'), emptyListHint=document.getElementById('emptyListHint');
+const legendEl=document.getElementById('legend');
+const toastEl=document.getElementById('toast'); let toastTimer=null;
+function toast(t){toastEl.textContent=t;toastEl.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>toastEl.classList.remove('show'),1600);}
+
+/* Color picker els */
+const cp=document.getElementById('colorPicker'), cpSwatches=document.getElementById('cpSwatches'), cpCustom=document.getElementById('cpCustom'), cpClose=document.getElementById('cpClose');
+
+/* ===== App state ===== */
+let trips=[],activeTripId=null,tripCounter=0,cidCounter=0,selectedId=null;
+function getActiveTrip(){return trips.find(t=>t.id===activeTripId);}
+
+/* ===== Header menu ===== */
+const kebabBtn=document.getElementById('kebabBtn'); const menu=document.getElementById('menu');
+
+/* Header reveal */
+(function(){
+  const headerEl=document.querySelector('header'); if(!headerEl) return;
+  let lastY=window.scrollY,ticking=false,hidden=false;
+  const DELTA=6,REVEAL_AT_TOP=16;
+  function hide(){ if(headerEl.classList.contains('force-show')) return; if(!hidden){headerEl.classList.add('is-hidden'); hidden=true;}}
+  function show(){ if(hidden){headerEl.classList.remove('is-hidden'); hidden=false;}}
+  function onScrollFrame(){ const y=window.scrollY; if(y<=REVEAL_AT_TOP){show(); lastY=y; return;} const diff=y-lastY; if(Math.abs(diff)<DELTA) return; diff>0?hide():show(); lastY=y; }
+  window.addEventListener('scroll',()=>{ if(!ticking){ requestAnimationFrame(()=>{ onScrollFrame(); ticking=false;}); ticking=true;}},{passive:true});
+  window.OnlyRoadsHeader={forceShow(on=true){ headerEl.classList.toggle('force-show',!!on); if(on) headerEl.classList.remove('is-hidden'); }, show, hide};
+})();
+
+/* Menu */
+kebabBtn.addEventListener('click',(e)=>{
+  e.stopPropagation();
+  const willShow=!menu.classList.contains('show');
+  menu.classList.toggle('show');
+  window.OnlyRoadsHeader?.forceShow(willShow);
+});
+document.addEventListener('click',e=>{
+  const outside=!menu.contains(e.target)&&e.target!==kebabBtn;
+  if(outside&&menu.classList.contains('show')){ menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false); }
+});
+
+/* Export map image */
+document.getElementById('miExport').addEventListener('click', async ()=>{
+  menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
+  const canvas=await html2canvas(document.getElementById('mapWrap'),{useCORS:true,backgroundColor:null,scale:2});
+  const a=document.createElement('a'); a.href=canvas.toDataURL('image/png'); a.download=`onlyroads_map_${Date.now()}.png`; a.click(); toast('Map image exported');
+});
+
+/* Export poster */
+document.getElementById('miExportPoster').addEventListener('click', async ()=>{
+  menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
+  try{
+    const mapShot=await html2canvas(document.getElementById('mapWrap'),{useCORS:true,backgroundColor:null,scale:2});
+    const poster=await buildPosterCanvas(mapShot);
+    const a=document.createElement('a'); a.href=poster.toDataURL('image/png'); a.download=`onlyroads_poster_${Date.now()}.png`; a.click();
+    toast('Poster exported');
+  }catch(e){ console.error(e); toast('Could not create poster'); }
+});
+
+/* Share & feedback */
+document.getElementById('miShare').addEventListener('click', async ()=>{
+  menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
+  const url=updateShareURL();
+  try{ if(navigator.share){ await navigator.share({title:'OnlyRoads',url}); toast('Shared'); } else { await navigator.clipboard.writeText(url); toast('Link copied'); } }
+  catch(e){}
+});
+document.getElementById('miFeedback').addEventListener('click',()=>{
+  menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
+  location.href=`mailto:?subject=${encodeURIComponent('OnlyRoads feedback')}&body=${encodeURIComponent('Feedback:\n\n')}`;
+});
+
+/* ===== Trips UI ===== */
+function refreshTripUI(){
+  tripSelect.innerHTML='';
+  trips.forEach(t=>{const o=document.createElement('option');o.value=t.id;o.textContent=t.name;if(t.id===activeTripId)o.selected=true;tripSelect.appendChild(o);});
+  const act=getActiveTrip(); tripColorChip.style.background = act ? act.color : 'transparent';
+  renderLegend();
+}
+tripSelect.addEventListener('change',()=>{activeTripId=+tripSelect.value||null; renderList(); updateMap(); updateEmptyState(); highlightLegendActive();});
+
+/* Empty state */
+function updateEmptyState(){
+  const hasTrip = trips.length>0;
+  belowHint.style.display = hasTrip ? 'none' : 'block';
+  tripBar.classList.toggle('show', hasTrip);
+  controls.classList.toggle('show', hasTrip);
+  list.classList.toggle('show', hasTrip);
+  legendEl.classList.toggle('show', hasTrip);
+}
+
+/* Create trip */
+function createTripFlow(){
+  const raw=prompt('Name your new trip:', '');
+  if(raw===null) return;
+  const name=(raw||'').trim();
+  addTrip(name||undefined, PALETTE[(tripCounter)%PALETTE.length]);
+}
+function addTrip(name,color){
+  const id=++tripCounter;
+  trips.push({id,name:name||`Trip ${id}`,color:color||PALETTE[(id-1)%PALETTE.length],cities:[]});
+  activeTripId=id; refreshTripUI(); renderList(); recomputeUnlockedFromCities(); updateMap(); updateEmptyState(); toast(`Created trip “${getActiveTrip().name}”`);
+}
+document.getElementById('fabAddTrip').addEventListener('click', createTripFlow);
+belowHint.addEventListener('click', createTripFlow);
+belowHint.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' ') { e.preventDefault(); createTripFlow(); } });
+
+/* Rename / Delete */
+document.getElementById('renameTripBtn').addEventListener('click',()=>{
+  const t=getActiveTrip(); if(!t){toast('No trip');return;}
+  const raw=prompt('Rename trip:', t.name||''); if(raw===null)return; const n=raw.trim(); if(n){t.name=n; refreshTripUI(); updateShareURL();}
+});
+document.getElementById('deleteTripBtn').addEventListener('click',()=>{
+  const t=getActiveTrip(); if(!t) return; if(!confirm(`Delete “${t.name}”?`)) return;
+  trips=trips.filter(x=>x.id!==t.id); activeTripId=trips.length?trips[trips.length-1].id:null;
+  recomputeUnlockedFromCities(); updateMap(); renderList(); refreshTripUI(); updateEmptyState(); updateShareURL();
+});
+
+/* ===== Color picker ===== */
+(function initColorPicker(){
+  cpSwatches.innerHTML='';
+  PALETTE.forEach(hex=>{
+    const b=document.createElement('button'); b.className='cp-swatch'; b.style.background=hex; b.setAttribute('aria-label',`Choose ${hex}`);
+    b.addEventListener('click', ()=>applyTripColor(hex,true));
+    cpSwatches.appendChild(b);
+  });
+  function positionPopover(){ const r=tripColorBtn.getBoundingClientRect(); cp.style.top=`${r.bottom+window.scrollY+8}px`; const maxLeft=window.scrollX+document.documentElement.clientWidth-cp.offsetWidth-8; cp.style.left=`${Math.min(r.left+window.scrollX,maxLeft)}px`; }
+  function openPopover(){ if(cp.hidden){ cp.hidden=false; requestAnimationFrame(()=>{ positionPopover(); }); } }
+  function closePopover(){ cp.hidden=true; }
+  tripColorBtn.addEventListener('click',(e)=>{ e.stopPropagation(); openPopover(); });
+  cpClose.addEventListener('click', closePopover);
+  cpCustom.addEventListener('input', ()=> applyTripColor(cpCustom.value, true));
+  document.addEventListener('click',(e)=>{ if(!cp.hidden && !cp.contains(e.target) && e.target!==tripColorBtn) closePopover(); });
+  window.addEventListener('resize', ()=>{ if(!cp.hidden) positionPopover(); });
+  window.applyTripColor=function(hex,persist){ const t=getActiveTrip(); if(!t) return; t.color=hex; tripColorChip.style.background=hex; renderLegend(); updateMap(); if(persist) updateShareURL(); };
+})();
+
+/* ===== Autocomplete (keyboard-aware) ===== */
+let acTimer=null;
+const headerEl = document.querySelector('header');
+function headerHeight(){ return headerEl?.getBoundingClientRect().height || 0; }
+function ensureCityBoxVisible(instant=false){ const r=controls.getBoundingClientRect(); const topTarget=(window.scrollY+r.top)-headerHeight()-8; window.scrollTo({top:Math.max(0,topTarget),behavior:instant?'auto':'smooth'}); }
+function resizeAutocompleteForViewport(){ const inputRect=input.getBoundingClientRect(); const vv=window.visualViewport; const viewportBottom=vv?(vv.offsetTop+vv.height):window.innerHeight; const available=Math.max(120,viewportBottom-inputRect.bottom-8); ac.style.maxHeight=`${Math.floor(available)}px`; }
+function keyboardAwarePadding(on){ if(on && window.visualViewport){ const vv=window.visualViewport; const kb=Math.max(0, window.innerHeight - (vv.height||window.innerHeight)); document.body.style.paddingBottom=`${kb+16}px`; }else{ document.body.style.paddingBottom=''; } }
+
+input.addEventListener('focus', ()=>{ ensureCityBoxVisible(false); resizeAutocompleteForViewport(); keyboardAwarePadding(true); });
+input.addEventListener('input', ()=>{
+  const q=input.value.trim();
+  if(acTimer)clearTimeout(acTimer);
+  if(!q){ac.classList.remove('show');ac.innerHTML='';return;}
+  acTimer=setTimeout(()=>fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=us&limit=6&q=${encodeURIComponent(q)}`)
+    .then(r=>r.json()).then(rows=>{
+      ac.innerHTML='';
+      const items=rows.map(row=>{
+        const a=row.address||{}; const cityName=a.city||a.town||a.village||a.hamlet||row.display_name.split(',')[0];
+        const stateFull=canonicalStateName(a.state||''); const ab=STATE_ABBR[stateFull]||'';
+        if(!cityName||!ab||!stateFull) return null;
+        return {label:`${cityName}, ${ab}`, name:cityName, stateFull, stateAbbr:ab, lat:+row.lat, lon:+row.lon};
+      }).filter(Boolean);
+      if(!items.length){ac.classList.remove('show');return;}
+      items.forEach(it=>{const d=document.createElement('div'); d.className='ac-item'; d.textContent=it.label; d.onclick=()=>{ac.classList.remove('show');input.value='';addCity(it);}; ac.appendChild(d);});
+      ac.classList.add('show'); resizeAutocompleteForViewport(); ensureCityBoxVisible(true);
+    }).catch(()=>{}),200);
+});
+input.addEventListener('blur', ()=>{ setTimeout(()=>{ ac.classList.remove('show'); keyboardAwarePadding(false); },150); });
+if (window.visualViewport) {
+  visualViewport.addEventListener('resize', ()=>{ resizeAutocompleteForViewport(); if(document.activeElement===input) ensureCityBoxVisible(true); });
+  visualViewport.addEventListener('scroll', resizeAutocompleteForViewport);
+}
+document.addEventListener('click',e=>{ if(!ac.contains(e.target)&&e.target!==input) ac.classList.remove('show'); });
+
+/* ===== Sortable list ===== */
+new Sortable(list,{handle:'.li',animation:150,
+  onChoose:e=>{selectedId=+e.item.dataset.id;updateSelectionVisuals();},
+  onEnd:()=>{const t=getActiveTrip();if(!t)return;const ids=[...list.children].filter(n=>n.classList.contains('li')).map(li=>+li.dataset.id);t.cities.sort((a,b)=>ids.indexOf(a.id)-ids.indexOf(b.id));updateMap();}
+});
+function renderList(){
+  list.querySelectorAll('.li').forEach(n=>n.remove());
+  const t=getActiveTrip(); if(!t){emptyListHint.style.display='none';return;}
+  if(t.cities.length===0){emptyListHint.style.display='grid'; emptyListHint.textContent='Add cities using the box above';}
+  else emptyListHint.style.display='none';
+  t.cities.forEach(c=>{
+    const row=document.createElement('div'); row.className='li'; row.dataset.id=c.id;
+    row.innerHTML=`<div class="handle">⋮⋮</div><div class="name">${c.name}, ${c.stateAbbr}</div><button class="remove">×</button>`;
+    row.querySelector('.remove').onclick=(ev)=>{ev.stopPropagation(); removeCityById(c.id);};
+    row.addEventListener('click',(ev)=>{ if(ev.target.closest('.remove'))return; selectedId=(selectedId===c.id?null:c.id); updateSelectionVisuals(); });
+    if(selectedId===c.id) row.classList.add('li-selected');
+    list.appendChild(row);
+  });
+}
+
+/* ===== Map / drawing ===== */
+let map, statesGlowLayer, statesLayer, stateLayerByName={}, conusBounds=null;
+let markerById={}, routeLines={}, unlockedStates=new Set();
+
+function initMap(){
+  map=L.map('map',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false});
+  map.createPane('statesGlowPane');  // glow underneath
+  map.createPane('statesPane');      // main fill/stroke
+  map.createPane('routesPane');
+  map.createPane('markersPane');
+
+  fetch("https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json")
+    .then(r=>r.json()).then(geo=>{
+      const conus=geo.features.filter(f=>!["Alaska","Hawaii","Puerto Rico"].includes(f.properties.name));
+
+      /* Coast glow layer (thin stroke + drop-shadows via CSS) */
+      statesGlowLayer=L.geoJSON({type:"FeatureCollection",features:conus},{
+        pane:'statesGlowPane',
+        style:()=>({color:'#ffffff',weight:1,opacity:0.9,fillOpacity:0,className:'or-states-glow'}),
+      }).addTo(map);
+
+      /* Main states */
+      statesLayer=L.geoJSON({type:"FeatureCollection",features:conus},{
+        pane:'statesPane',
+        style:()=>({color:'#ffffff',weight:1,fillColor:'#0b1c3a',fillOpacity:1}),
+        onEachFeature:(f,l)=>{stateLayerByName[f.properties.name]=l;}
+      }).addTo(map);
+
+      const tmp=L.geoJSON({type:"FeatureCollection",features:conus}); conusBounds=tmp.getBounds(); fitUS();
+      refreshAllStateStyles(); updateMap();
+    });
+}
+function fitUS(){ if(conusBounds) map.fitBounds(conusBounds.pad(0.01),{animate:false}); }
+
+/* Inner shadow class toggle for visited states */
+function setStateInnerShadow(name, on){
+  const layer=stateLayerByName[name]; if(!layer) return;
+  const el = layer.getElement && layer.getElement(); // path element
+  if(el){ el.classList.toggle('or-state-inner', !!on); }
+}
+
+/* Apply selected/visited styles */
+function applyStateStyle(name,selected){
+  const layer=stateLayerByName[name]; if(!layer) return;
+  if(selected){
+    layer.setStyle({fillColor:'#ffffff',fillOpacity:1,color:'#0b1c3a',weight:2});
+  }else{
+    layer.setStyle({fillColor:'#0b1c3a',fillOpacity:1,color:'#ffffff',weight:1});
+  }
+  setStateInnerShadow(name, selected); // add/remove inner shadow
+}
+function refreshAllStateStyles(){ Object.keys(stateLayerByName).forEach(n=>applyStateStyle(n,unlockedStates.has(n))); }
+
+function markerStyle(isSelected){ return { radius:DOT_RADIUS, color:'#ffffff', weight:DOT_WEIGHT, fillColor:isSelected?GREEN:RED, fillOpacity:1, pane:'markersPane', className:'or-marker-glow', interactive:false }; }
+function updateSelectionVisuals(){
+  [...list.children].forEach(li=>{ if(!li.classList.contains('li')) return; +li.dataset.id===selectedId ? li.classList.add('li-selected') : li.classList.remove('li-selected');});
+  for(const id in markerById){ const m=markerById[id]; if(m){ m.setStyle(markerStyle(+id===selectedId)); } }
+}
+function updateCounter(){ mapCounter.textContent=`${unlockedStates.size}/50`; }
+function recomputeUnlockedFromCities(){
+  unlockedStates.clear();
+  trips.forEach(t=>t.cities.forEach(c=>{ const canon=canonicalStateName(c.stateFull||c.stateAbbr); if(canon && stateLayerByName[canon]) unlockedStates.add(canon); }));
+  updateCounter(); refreshAllStateStyles();
+}
+function _scaledDx(p1,p2){ const avg=((p1[0]+p2[0])/2)*Math.PI/180; return (p2[1]-p1[1])*Math.cos(avg); }
+function adaptiveTauFor(p1,p2){ const dx=Math.abs(_scaledDx(p1,p2)), dy=Math.abs(p2[0]-p1[0]), d=Math.hypot(dx,dy); const r=dx/(dx+dy+1e-9); let tau=0.62+(r-0.5)*0.36+Math.min(d/5,1)*0.16; return Math.max(0.5,Math.min(0.85,tau)); }
+function _controls(p0,p1,p2,p3,tau){
+  const dx10=_scaledDx(p0,p1), dx21=_scaledDx(p1,p2), dx32=_scaledDx(p2,p3);
+  const k=(tau/6)*CURVE_GAIN; const avg1=((p0[0]+p1[0])/2)*Math.PI/180, avg2=((p2[0]+p3[0])/2)*Math.PI/180;
+  const c1=[ p1[0]+k*(p2[0]-p0[0]),  p1[1]+k*((dx21+dx10)/(Math.cos(avg1)||1)) ];
+  const c2=[ p2[0]-k*(p3[0]-p1[0]),  p1[1]-k*((dx32+dx21)/(Math.cos(avg2)||1)) ];
+  return [c1,c2];
+}
+function buildSmoothPathAdaptive(points,{closed=false}={}){
+  if(points.length<2) return null;
+  const pts=points.slice();
+  if(closed){ pts.unshift(points[points.length-2]||points[0]); pts.push(points[1]||points[0]); }
+  else { pts.unshift(points[0]); pts.push(points[points.length-1]); }
+  const path=['M', points[0]];
+  for(let i=0;i<points.length-1;i++){
+    const p0=pts[i], p1=pts[i+1], p2=pts[i+2], p3=pts[i+3];
+    const tau=adaptiveTauFor(p1,p2);
+    const [c1,c2]=_controls(p0,p1,p2,p3,tau);
+    path.push('C', c1, c2, p2);
+  }
+  if(closed) path.push('Z');
+  return path;
+}
+function isClosed(points){ if(points.length<3) return false; const a=points[0], b=points[points.length-1]; return Math.hypot(a[0]-b[0],a[1]-b[1])<0.6; }
+
+function updateMap(){
+  if(!map) return;
+  // clear
+  for(const id in markerById){ if(markerById[id]) map.removeLayer(markerById[id]); }
+  markerById={};
+  Object.values(routeLines).forEach(l=>{ if(l) map.removeLayer(l); }); routeLines={};
+
+  // markers
+  trips.forEach(t=>{
+    t.cities.forEach(c=>{
+      markerById[c.id]=L.circleMarker([c.lat,c.lon], markerStyle(c.id===selectedId)).addTo(map);
+    });
+  });
+
+  // routes (no glow layer)
+  trips.forEach(t=>{
+    if(t.cities.length>1){
+      const pts=t.cities.map(c=>[c.lat,c.lon]);
+      const closed=isClosed(pts);
+      const path=buildSmoothPathAdaptive(pts,{closed});
+      if(path){ routeLines[t.id]=L.curve(path,{pane:'routesPane',className:'route',color:t.color,weight:3}).addTo(map); }
+    }
+  });
+
+  fitUS(); updateSelectionVisuals();
+}
+
+/* City add/remove */
+function addCity(item){
+  const t=getActiveTrip(); if(!t){toast('Create a trip first (tap +)');return;}
+  item.id=++cidCounter; t.cities.push(item);
+  recomputeUnlockedFromCities(); updateMap(); renderList(); updateSelectionVisuals(); updateEmptyState();
+  toast(`Added ${item.name}, ${item.stateAbbr}`);
+}
+function removeCityById(id){
+  const t=getActiveTrip(); if(!t) return;
+  const idx=t.cities.findIndex(c=>c.id===id); if(idx===-1) return;
+  const removed=t.cities[idx]; t.cities.splice(idx,1);
+  if(selectedId===id) selectedId=null;
+  recomputeUnlockedFromCities(); updateMap(); renderList(); updateSelectionVisuals(); updateEmptyState();
+  toast(`Removed ${removed.name}, ${removed.stateAbbr}`);
+}
+
+/* Legend + switching */
+function renderLegend(){
+  legendEl.innerHTML='';
+  trips.forEach(t=>{
+    const d=document.createElement('button'); d.className='item'; d.type='button';
+    d.setAttribute('data-id', t.id); d.setAttribute('aria-label', `Switch to ${t.name}`); d.tabIndex=0;
+    d.innerHTML=`<span class="chip" style="background:${t.color}"></span><span>${t.name}</span>`;
+    d.addEventListener('click', ()=> activateTripById(t.id));
+    d.addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); activateTripById(t.id); }});
+    legendEl.appendChild(d);
+  });
+  legendEl.classList.toggle('show', trips.length>0);
+  highlightLegendActive();
+}
+function highlightLegendActive(){ [...legendEl.children].forEach(el=>{ el.classList.toggle('is-active', +el.getAttribute('data-id')===activeTripId); }); }
+function activateTripById(id){
+  if (activeTripId === id) return;
+  activeTripId = id;
+  refreshTripUI(); renderList(); updateMap(); updateEmptyState(); highlightLegendActive();
+}
+
+/* Serialize/share */
+function serializeState(){ return trips.map(t=>({n:t.name,color:t.color,c:t.cities.map(c=>({n:c.name,st:c.stateAbbr,lat:+c.lat.toFixed(5),lon:+c.lon.toFixed(5)}))})); }
+function deserializeState(obj){
+  trips=[]; activeTripId=null; tripCounter=0; cidCounter=0; selectedId=null;
+  (obj||[]).forEach(bundle=>{
+    const id=++tripCounter;
+    const t={id,name:bundle.n||`Trip ${id}`,color:bundle.color||PALETTE[(id-1)%PALETTE.length],cities:[]};
+    (bundle.c||[]).forEach(cc=>t.cities.push({id:++cidCounter,name:cc.n,stateAbbr:cc.st,stateFull:ABBR_TO_NAME[cc.st],lat:+cc.lat,lon:+cc.lon}));
+    trips.push(t); activeTripId=id;
+  });
+  refreshTripUI(); renderList(); recomputeUnlockedFromCities(); updateMap(); updateEmptyState();
+}
+function updateShareURL(){
+  const b64=btoa(unescape(encodeURIComponent(JSON.stringify(serializeState()))));
+  const url=new URL(location.href); url.hash='s='+b64; history.replaceState(null,'',url.toString()); return url.toString();
+}
+
+/* ===== Poster utils (kept) ===== */
+function haversineMiles(lat1,lon1,lat2,lon2){
+  const R=3958.7613, toRad=d=>d*Math.PI/180;
+  const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
+  const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(a));
+}
+function totalTripMiles(trip){
+  if(!trip || trip.cities.length<2) return 0;
+  let miles=0; for(let i=0;i<trip.cities.length-1;i++){ const a=trip.cities[i], b=trip.cities[i+1]; miles += haversineMiles(a.lat,a.lon,b.lat,b.lon); }
+  return miles;
+}
+function formatMiles(m){ return m>=1000 ? `${(m/1000).toFixed(1)}k miles` : `${Math.round(m/10)*10} miles`; }
+
+async function buildPosterCanvas(mapCanvas){
+  const canvas=document.createElement('canvas'); canvas.width=POSTER_W; canvas.height=POSTER_H;
+  const ctx=canvas.getContext('2d');
+  ctx.fillStyle=POSTER_BG; ctx.fillRect(0,0,POSTER_W,POSTER_H);
+
+  const unlocked = unlockedStates.size || 0;
+  ctx.fillStyle='#eaf2ff'; ctx.textBaseline='top';
+  const leftPad=64, topPad=64, lineGap=8;
+  ctx.font='700 64px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
+  ctx.fillText('STATES', leftPad, topPad);
+  ctx.fillText('UNLOCKED', leftPad, topPad+64+lineGap);
+  ctx.font='900 160px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
+  const bigText=`${unlocked}`; ctx.fillText(bigText, leftPad+360, topPad-16);
+  ctx.font='700 56px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
+  ctx.fillText('/ 50', leftPad+360 + ctx.measureText(bigText).width + 16, topPad+32);
+
+  const mapTargetW=POSTER_W-160, ratio=mapCanvas.width/mapCanvas.height, mapW=mapTargetW, mapH=mapW/ratio, mapX=(POSTER_W-mapW)/2, mapY=420;
+  ctx.save(); ctx.shadowColor='rgba(0,0,0,0.55)'; ctx.shadowBlur=60; ctx.shadowOffsetY=18; ctx.drawImage(mapCanvas,mapX,mapY,mapW,mapH); ctx.restore();
+
+  const sectionY=mapY+mapH+60; ctx.fillStyle='#eaf2ff'; ctx.font='900 54px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif'; ctx.fillText('Highlighted  road trips:', leftPad, sectionY);
+  const itemsYStart=sectionY+72; ctx.font='500 36px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif'; const bulletGap=54, colorBarW=36, colorBarH=8;
+
+  const tripSummaries=trips.map(t=>({id:t.id,color:t.color,name:t.name,miles:totalTripMiles(t)})).sort((a,b)=>b.miles-a.miles);
+  tripSummaries.forEach((row,idx)=>{ const y=itemsYStart+idx*bulletGap; ctx.fillStyle=row.color; ctx.fillRect(leftPad,y+16,colorBarW,colorBarH); ctx.fillStyle='#e6ecff'; ctx.fillText(`${formatMiles(row.miles)}: ${row.name}`, leftPad+colorBarW+14, y); });
+
+  const wm=WATERMARK_TEXT; ctx.save(); ctx.translate(POSTER_W-26, POSTER_H-120); ctx.rotate(-Math.PI/2); ctx.fillStyle='#ffffff17'; ctx.font='900 120px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif'; ctx.fillText(wm,0,0); ctx.restore();
+  return canvas;
+}
+
+/* Boot */
+document.addEventListener('DOMContentLoaded', ()=>{
+  initMap();
+  updateEmptyState();
+  const h=new URL(location.href).hash;
+  if(h.startsWith('#s=')){ try{ deserializeState(JSON.parse(decodeURIComponent(escape(atob(h.slice(3)))))); }catch(e){} }
+});
+</script>
+</body>
+</html>
