@@ -35,7 +35,7 @@ header.is-hidden{transform:translateY(-100%)} header.force-show{transform:transl
 /* Layout */
 .wrap{max-width:980px;margin:0 auto;padding:8px 12px 18px}
 .map-wrap{position:relative}
-/* Map box stays the same height; the map fits tighter inside it */
+/* Keep the map box as-is; we’ll fill it better with a transform */
 #map{width:100%;aspect-ratio:21/7;min-height:200px;border-radius:14px;border:1px solid #233a6b;background:#0e2349;margin:8px 0 6px;overflow:hidden;position:relative}
 #mapCounter{position:absolute;left:12px;bottom:12px;background:rgba(8,23,51,.88);color:#fff;border:1px solid #ffffff2d;padding:6px 10px;border-radius:10px;font:800 clamp(14px,3.8vw,18px)/1 Impact,system-ui,sans-serif;letter-spacing:.5px}
 #fabAddTrip{position:absolute;right:12px;bottom:12px;z-index:2;width:46px;height:46px;border-radius:14px;border:1px solid #284079;background:#16306a;color:#fff;font-size:24px;font-weight:700;display:grid;place-items:center;cursor:pointer}
@@ -49,7 +49,7 @@ body.exporting #fabAddTrip{visibility:hidden}
 #belowHint{display:none;margin:8px 2px 12px;padding:16px 14px;border:2px dotted var(--panelBorder);border-radius:12px;background:transparent;color:var(--ink-dim);text-align:center;font-size:14px;letter-spacing:.2px;cursor:pointer;user-select:none}
 #belowHint:active{transform:scale(.99)}
 
-/* Trip bar — name + 3 squares on right */
+/* Trip bar — name + controls */
 .tripbar{display:none;align-items:center;gap:10px;margin:8px 0;flex-wrap:nowrap}
 .tripbar.show{display:flex}
 .tripbar .tripname{flex:1;min-width:0;background:var(--panel);border:1px solid var(--panelBorder);color:var(--ink);border-radius:12px;padding:10px 12px;font-size:15px;height:42px;line-height:20px}
@@ -86,7 +86,7 @@ body.exporting #fabAddTrip{visibility:hidden}
 .legend .chip{width:14px;height:14px;border-radius:50%;border:1px solid #fff6}
 
 /* Menu (anchored to kebab) */
-.menu{position:fixed; /* positioned in JS */
+.menu{position:fixed; /* positioned under the kebab via JS */
   z-index:11000;background:#0f2550;border:1px solid #223a6c;border-radius:12px;
   min-width:230px;display:none;box-shadow:0 12px 30px rgba(0,0,0,.35);overflow:hidden}
 .menu.show{display:block}
@@ -121,25 +121,23 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 /* ===== Desktop-only readability tweaks (mobile untouched) ===== */
 @media (min-width:700px){
   .brand{
-    letter-spacing:1.2px;
+    letter-spacing:1.3px;
     font-stretch:condensed;
-    transform:scaleX(.80);              /* tighter */
+    transform:scaleX(.76);              /* tighter for readability */
     transform-origin:left center;
-    -webkit-text-stroke:1px rgba(230,236,255,.40);
+    -webkit-text-stroke:1.15px rgba(230,236,255,.42);
     text-shadow:0 1px 0 rgba(0,0,0,.25);
   }
-  /* Use system numerals for crisper "0/50" on desktop */
   #mapCounter{
     font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
     font-weight:900;
     font-size:16px;
-    letter-spacing:.4px;
+    letter-spacing:.35px;
     padding:5px 9px;
-    transform:scaleX(.92);
+    transform:scaleX(.9);
     transform-origin:left center;
   }
 }
-/* NOTE: No map box resize — we keep the same #map height */
 </style>
 </head>
 <body>
@@ -217,7 +215,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.070';
+const VERSION = '0.071';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -314,7 +312,7 @@ document.addEventListener('click',e=>{
 document.getElementById('miSave').addEventListener('click', async ()=>{
   menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
   try{
-    document.body.classList.add('exporting'); // hide badges over map
+    document.body.classList.add('exporting');
     await new Promise(r=>requestAnimationFrame(r));
     const mapShot=await html2canvas(document.getElementById('map'),{useCORS:true,backgroundColor:null,scale:2});
     document.body.classList.remove('exporting');
@@ -492,13 +490,45 @@ function initMap(){
 }
 function fitUS(){
   if(!conusBounds) return;
-  // Zoom in by "insetting" the bounds a bit so the US fills more of the box
-  const inset = Math.max(0, Math.min(0.08, 0.05)); // safety clamp
-  const tight = conusBounds.pad(-inset);
-  map.fitBounds(tight, { padding:[6,6], animate:false });
+  // Standard best fit
+  map.fitBounds(conusBounds, { padding:[6,6], animate:false });
+  // Then vertically exaggerate the vector panes so the US fills height
+  exaggerateMap();
 }
 
-/* Inner shadow class for visited states */
+/* Vertically stretch the rendered vector panes to fill the box (no clipping, no box resize) */
+function exaggerateMap(){
+  const box = map.getSize();
+  const sw = conusBounds.getSouthWest(), ne = conusBounds.getNorthEast();
+  const pSW = map.latLngToContainerPoint(sw), pNE = map.latLngToContainerPoint(ne);
+  const usH = Math.abs(pSW.y - pNE.y);
+  const topPadding = 6, bottomPadding = 6;
+  const targetH = Math.max(1, box.y - topPadding - bottomPadding);
+
+  // If already filling, skip
+  if (usH <= 0 || targetH <= usH + 0.5) { applyPaneTransform(1, 0); return; }
+
+  const factor = targetH / usH; // scaleY only
+  const deltaY = -(usH * (factor - 1)) / 2; // keep vertically centered
+
+  applyPaneTransform(factor, deltaY);
+}
+
+function applyPaneTransform(scaleY, translateY){
+  const panes = [
+    map.getPane('statesGlowPane'),
+    map.getPane('statesPane'),
+    map.getPane('routesPane'),
+    map.getPane('markersPane')
+  ].filter(Boolean);
+  panes.forEach(p=>{
+    p.style.transformOrigin = '50% 50%';
+    p.style.transform = `translateY(${translateY}px) scaleY(${scaleY})`;
+  });
+}
+
+window.addEventListener('resize', ()=>{ if(map) { fitUS(); } });
+
 function setStateInnerShadow(name, on){
   const layer=stateLayerByName[name]; if(!layer) return;
   const el = layer.getElement && layer.getElement();
@@ -664,11 +694,11 @@ async function buildPosterCanvas(mapCanvas){
   ctx.font='900 168px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
   const big=String(unlocked);
   const bigW=ctx.measureText(big).width;
-  const baseY=topPad+168; // baseline
+  const baseY=topPad+168;
   ctx.fillText(big, leftPad, baseY);
 
   ctx.font='800 64px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
-  ctx.fillText('/ 50', leftPad + bigW + 18, baseY - 28); // slightly raised for visual balance
+  ctx.fillText('/ 50', leftPad + bigW + 18, baseY - 28);
 
   ctx.font='700 64px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
   ctx.textBaseline='top';
@@ -678,12 +708,10 @@ async function buildPosterCanvas(mapCanvas){
   /* Map card */
   const cardMarginX=48, cardX=leftPad, cardY=topPad+220, cardW=POSTER_W-leftPad-cardMarginX, cardH=POSTER_H*0.32, radius=28;
   ctx.save();
-  // card shadow
   ctx.shadowColor='rgba(0,0,0,0.5)'; ctx.shadowBlur=40; ctx.shadowOffsetY=18;
   roundRect(ctx,cardX,cardY,cardW,cardH,radius); ctx.fillStyle=CARD_BG; ctx.fill();
   ctx.restore();
 
-  // clip to card and draw centered map image with padding
   const pad=28; const innerW=cardW-2*pad, innerH=cardH-2*pad; const mapRatio=mapCanvas.width/mapCanvas.height;
   let drawW=innerW, drawH=innerW/mapRatio;
   if(drawH>innerH){ drawH=innerH; drawW=innerH*mapRatio; }
@@ -700,7 +728,7 @@ async function buildPosterCanvas(mapCanvas){
   tripSummaries.forEach((row,idx)=>{ const y=itemsYStart+idx*bulletGap; ctx.fillStyle=row.color; ctx.fillRect(leftPad,y+16,colorBarW,colorBarH); ctx.fillStyle='#e6ecff'; ctx.fillText(`${formatMiles(row.miles)}: ${row.name}`, leftPad+colorBarW+14, y); });
 
   /* Watermark */
-  const wm=WATERMARK_TEXT; ctx.save(); ctx.translate(POSTER_W-26, POSTER_H-120); ctx.rotate(-Math.PI/2); ctx.fillStyle='#ffffff17'; ctx.font='900 120px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif'; ctx.fillText(wm,0,0); ctx.restore();
+  const wm=WATERMARK_TEXT; ctx.save(); ctx.translate(POSTER_W-120, POSTER_H-120); ctx.rotate(-Math.PI/2); ctx.fillStyle='#ffffff17'; ctx.font='900 120px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif'; ctx.fillText(wm,0,0); ctx.restore();
 
   /* Tiny version caption */
   ctx.fillStyle='#9fb0df85';
