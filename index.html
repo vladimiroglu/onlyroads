@@ -728,7 +728,7 @@ async function buildPosterCanvas(mapCanvas){
   tripSummaries.forEach((row,idx)=>{ const y=itemsYStart+idx*bulletGap; ctx.fillStyle=row.color; ctx.fillRect(leftPad,y+16,colorBarW,colorBarH); ctx.fillStyle='#e6ecff'; ctx.fillText(`${formatMiles(row.miles)}: ${row.name}`, leftPad+colorBarW+14, y); });
 
   /* Watermark */
-  const wm=WATERMARK_TEXT; ctx.save(); ctx.translate(POSTER_W-120, POSTER_H-120); ctx.rotate(-Math.PI/2); ctx.fillStyle='#ffffff17'; ctx.font='900 120px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif'; ctx.fillText(wm,0,0); ctx.restore();
+  const wm=WATERMARK_TEXT; ctx.save(); ctx.translate(POSTER_W-120, POSTER_H-140); ctx.rotate(-Math.PI/2); ctx.fillStyle='#ffffff17'; ctx.font='900 120px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif'; ctx.fillText(wm,0,0); ctx.restore();
 
   /* Tiny version caption */
   ctx.fillStyle='#9fb0df85';
@@ -749,3 +749,4 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
+
