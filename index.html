@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.115';
+const VERSION = '0.116';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -269,7 +269,7 @@ document.addEventListener('click',e=>{
   if(outside&&menu.classList.contains('show')){ menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false); }
 });
 
-/* ===== Poster (Leaflet Canvas offscreen) ===== */
+/* ===== Poster (Leaflet SVG offscreen + rasterize) ===== */
 document.getElementById('miSave').addEventListener('click', async ()=>{
   menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
   try{
@@ -282,12 +282,13 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     work.style.width='1080px'; work.style.height='1920px';
     document.body.appendChild(work);
 
-    const posterRenderer = L.canvas({padding:0.5});
+    // Use SVG renderer so leaflet-curve works
+    const posterRenderer = L.svg({padding:0.5});
     const posterMap = L.map(work,{
       zoomControl:false,attributionControl:false,
       dragging:false,scrollWheelZoom:false,doubleClickZoom:false,
       boxZoom:false,keyboard:false,touchZoom:false,worldCopyJump:false,
-      zoomSnap:0, zoomDelta:0.25, preferCanvas:true, fadeAnimation:false, zoomAnimation:false
+      zoomSnap:0, zoomDelta:0.25, preferCanvas:false, fadeAnimation:false, zoomAnimation:false
     });
     posterMap.invalidateSize(false);
 
@@ -338,33 +339,41 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
       }
     }
 
-    // let Canvas render flush
+    // let SVG render flush
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
 
-    // pull the actual renderer's canvas + translate offsets
+    // Grab the SVG container and rasterize it to the preview canvas
     const activeRenderer = posterMap.getRenderer(statesLayerPoster) || posterRenderer;
-    const src = (typeof activeRenderer.getContainer === 'function')
-                  ? activeRenderer.getContainer()
-                  : activeRenderer._container;
-    if(!src){ throw new Error('Poster renderer canvas not found'); }
+    const svgEl = (typeof activeRenderer.getContainer === 'function') ? activeRenderer.getContainer() : activeRenderer._container;
+    if(!(svgEl instanceof SVGSVGElement)){ throw new Error('Poster renderer SVG not found'); }
 
-    const {tx,ty} = parseTranslate(src.style.transform);
-    // src is device-pixel sized; convert offsets to CSS pixels
-    const ratioX = src.width  / work.clientWidth;   // ≈ devicePixelRatio
-    const ratioY = src.height / work.clientHeight;
+    const svgClone = svgEl.cloneNode(true);
+    // Ensure proper sizing and namespace for rasterization
+    svgClone.setAttribute('xmlns','http://www.w3.org/2000/svg');
+    svgClone.setAttribute('width','1080');
+    svgClone.setAttribute('height','1920');
 
-    // compose onto the preview canvas at native poster size (1080×1920)
+    const svgString = new XMLSerializer().serializeToString(svgClone);
+    const svgBlob = new Blob([svgString], {type:'image/svg+xml;charset=utf-8'});
+    const url = URL.createObjectURL(svgBlob);
+
     const dst = overlay.canvas;
     const dctx = dst.getContext('2d');
     dctx.fillStyle='#0b1c3a';
     dctx.fillRect(0,0,dst.width,dst.height);
-    dctx.drawImage(
-      src,
-      -tx/ratioX,         // x offset in CSS px
-      -ty/ratioY,         // y offset in CSS px
-      src.width/ratioX,   // draw width in CSS px -> 1080
-      src.height/ratioY   // draw height in CSS px -> 1920
-    );
+
+    await new Promise((resolve, reject)=>{
+      const img = new Image();
+      img.onload = ()=>{ 
+        try{
+          dctx.drawImage(img, 0, 0, dst.width, dst.height);
+          URL.revokeObjectURL(url);
+          resolve();
+        }catch(e){ reject(e); }
+      };
+      img.onerror = reject;
+      img.src = url;
+    });
 
     // cleanup
     posterMap.remove(); work.remove();
