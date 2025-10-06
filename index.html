@@ -57,7 +57,7 @@ body.exporting #map .leaflet-map-pane{ transform:none !important; }
 .mini .color-chip{width:22px;height:22px;border-radius:6px;border:1px solid #ffffff55;display:block}
 .mini svg{width:18px;height:18px;display:block;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
-/* City controls + autocomplete (kept minimal) */
+/* City controls + autocomplete */
 .controls{display:none;gap:10px;position:relative}
 .controls.show{display:flex}
 .controls input{flex:1;background:var(--panel);border:1px solid var(--panelBorder);color:var(--ink);border-radius:10px;padding:12px 14px;font-size:16px}
@@ -76,7 +76,7 @@ body.exporting #map .leaflet-map-pane{ transform:none !important; }
 .li.li-selected{background:#224080}
 .empty-list-hint{position:absolute;inset:0;display:none;place-items:center;color:#c9d6ff;opacity:.9;font-size:13px}
 
-/* Legend (click-to-switch) */
+/* Legend */
 .legend{display:none;flex-wrap:wrap;gap:10px;margin:6px 2px 0}
 .legend.show{display:flex}
 .legend .item{display:flex;align-items:center;gap:8px;background:#0f2550;border:1px solid #223a6c;padding:6px 10px;border-radius:12px;font-size:13px;color:var(--ink-dim);cursor:pointer;outline:none}
@@ -95,7 +95,7 @@ body.exporting #map .leaflet-map-pane{ transform:none !important; }
 .toast.show{display:block}
 footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
-/* Color picker popover */
+/* Color picker */
 .cp-pop{position:absolute;z-index:12000;background:#0f2550;border:1px solid #223a6c;border-radius:12px;padding:10px;box-shadow:0 12px 30px rgba(0,0,0,.35);width:min(260px, 92vw)}
 .cp-row{display:flex;flex-wrap:wrap;gap:10px}
 .cp-swatch{width:28px;height:28px;border-radius:8px;border:1px solid #ffffff55;cursor:pointer}
@@ -197,7 +197,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.084';
+const VERSION = '0.085';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -214,12 +214,46 @@ function canonicalStateName(n){ if(!n) return null; const s=String(n).trim();
 const PALETTE=['#45a3ff','#ff6b6b','#ffd166','#06d6a0','#c792ea','#ff9f1c','#00bcd4','#ef476f','#8ac926','#a0a0ff'];
 
 const DOT_RADIUS=3.5, DOT_WEIGHT=1, RED='#ff0000', GREEN='#30e6b6';
-const CURVE_GAIN=1.25;
+
+/* === Curve tuning === */
+let CURVE_GAIN = 1.05; /* gentler than before */
+const ROUTE_WEIGHT = 3;
 
 /* Poster defaults */
 const POSTER_W = 1080, POSTER_H = 1920;
 const POSTER_BG = '#0b1c3a';
 const WATERMARK_TEXT = 'OnlyPages';
+
+/* ===== POSTER LAYOUT TUNABLES =====
+   Tweak these numbers to adjust the whole layout quickly.
+   All positions are in poster pixels (1080x1920). */
+const POSTER_LAYOUT = {
+  SAFE_TOP: 250,
+  SAFE_BOTTOM: 250,
+
+  headerLeftX: 60,
+  headerTopY: 50,          // relative to SAFE_TOP
+
+  bigNumberRightPad: 60,   // distance from right edge
+  bigNumberGap: 18,        // space between big number and "/ 50"
+
+  mapCard: {               // rounded rectangle box for the map
+    topGapFromHeader: 40,  // below the second "UNLOCKED" line
+    maxH: 620,             // cap map box height
+    sidePad: 40,           // horizontal padding inside the poster
+    radius: 36,            // card corner radius
+    shadowBlur: 30,
+    shadowOffsetY: 14
+  },
+
+  listHeaderGap: 54,       // gap under the map card
+  listStartGap: 64,        // gap under list header
+  bullet: { dashW: 86, dashH: 12, dashOffsetY: -22, lineGap: 64 },
+
+  watermarkRightPad: 24,   // from right edge
+  watermarkRaise: 10       // raise a touch into the safe area
+};
+/* ================================== */
 
 /* Refs */
 const mapCounter=document.getElementById('mapCounter');
@@ -241,7 +275,7 @@ function toast(t){const el=document.getElementById('toast'); el.textContent=t; e
 let trips=[],activeTripId=null,tripCounter=0,cidCounter=0,selectedId=null;
 function getActiveTrip(){return trips.find(t=>t.id===activeTripId);}
 
-/* ===== Menu (anchored to kebab) ===== */
+/* ===== Menu (anchored) ===== */
 const kebabBtn=document.getElementById('kebabBtn'); const menu=document.getElementById('menu');
 function positionMenu(){
   if(!menu.classList.contains('show')) return;
@@ -275,7 +309,7 @@ function updateEmptyState(){
   legendEl.classList.toggle('show', hasTrip);
 }
 
-/* Create trip */
+/* Create / rename / delete trip */
 function createTripFlow(){
   const raw=prompt('Name your new trip:', '');
   if(raw===null) return;
@@ -290,7 +324,6 @@ function addTrip(name,color){
 document.getElementById('fabAddTrip').addEventListener('click', createTripFlow);
 belowHint.addEventListener('click', createTripFlow);
 
-/* Rename / Delete */
 document.getElementById('renameTripBtn').addEventListener('click',()=>{
   const t=getActiveTrip(); if(!t){toast('No trip');return;}
   const raw=prompt('Rename trip:', t.name||''); if(raw===null)return; const n=raw.trim(); if(n){t.name=n; refreshTripUI();}
@@ -318,7 +351,7 @@ const cp=document.getElementById('colorPicker'), cpSwatches=document.getElementB
   document.addEventListener('click',(e)=>{ if(!cp.hidden && !cp.contains(e.target) && e.target!==tripColorBtn) closePopover(); });
   window.addEventListener('resize', ()=>{ if(!cp.hidden) positionPopover(); });
 })();
-function applyTripColor(hex,persist){ const t=getActiveTrip(); if(!t) return; t.color=hex; tripColorChip.style.background=hex; renderLegend(); updateMap(); if(persist) {/* updateShareURL();*/} }
+function applyTripColor(hex,persist){ const t=getActiveTrip(); if(!t) return; t.color=hex; tripColorChip.style.background=hex; renderLegend(); updateMap(); }
 
 /* ===== Autocomplete (minimal) ===== */
 let acTimer=null;
@@ -366,18 +399,20 @@ function renderList(){
 let map, statesGlowLayer, statesLayer, stateLayerByName={}, conusBounds=null;
 let markerById={}, routeLines={}, unlockedStates=new Set();
 
+/* Desktop map fine-scaling/nudges */
 const MAP_FINE_SCALE = 0.85;
 const MAP_Y_NUDGE   = -213;
 const MAP_X_NUDGE   = -50;
 const FINE_SCALE_MIN_W = 900;
 function fineScaleActive(){ return window.innerWidth >= FINE_SCALE_MIN_W; }
 
+/* Auto-fit tuning */
 const AUTO_FIT = { OVERSCAN: 1.06, PAD: 8 };
 
 function initMap(){
   map=L.map('map',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false});
-  map.createPane('statesGlowPane');  // glow underneath
-  map.createPane('statesPane');      // main fill/stroke
+  map.createPane('statesGlowPane');
+  map.createPane('statesPane');
   map.createPane('routesPane');
   map.createPane('markersPane');
 
@@ -441,6 +476,41 @@ function applyFineScale(){
   pane.style.transform = `${cleaned} translateX(${dx}px) translateY(${dy}px) scale(${MAP_FINE_SCALE})`;
 }
 
+/* ===== Adaptive curve builder (gentler) ===== */
+function _scaledDx(p1,p2){ const avg=((p1[0]+p2[0])/2)*Math.PI/180; return (p2[1]-p1[1])*Math.cos(avg); }
+function adaptiveTauFor(p1,p2){
+  const dx=Math.abs(_scaledDx(p1,p2)), dy=Math.abs(p2[0]-p1[0]), d=Math.hypot(dx,dy);
+  const r=dx/(dx+dy+1e-9);
+  // tighter range for gentler curves
+  let tau=0.58+(r-0.5)*0.24+Math.min(d/5,1)*0.10;
+  return Math.max(0.48,Math.min(0.78,tau));
+}
+function _controls(p0,p1,p2,p3,tau){
+  const dx10=_scaledDx(p0,p1), dx21=_scaledDx(p1,p2), dx32=_scaledDx(p2,p3);
+  const k=(tau/6)*CURVE_GAIN;
+  const avg1=((p0[0]+p1[0])/2)*Math.PI/180, avg2=((p2[0]+p3[0])/2)*Math.PI/180;
+  const c1=[ p1[0]+k*(p2[0]-p0[0]),  p1[1]+k*((dx21+dx10)/(Math.cos(avg1)||1)) ];
+  const c2=[ p2[0]-k*(p3[0]-p1[0]),  p1[1]-k*((dx32+dx21)/(Math.cos(avg2)||1)) ];
+  return [c1,c2];
+}
+function buildSmoothPathAdaptive(points,{closed=false}={}){
+  if(points.length<2) return null;
+  const pts=points.slice();
+  if(closed){ pts.unshift(points[points.length-2]||points[0]); pts.push(points[1]||points[0]); }
+  else { pts.unshift(points[0]); pts.push(points[points.length-1]); }
+  const path=['M', points[0]];
+  for(let i=0;i<points.length-1;i++){
+    const p0=pts[i], p1=pts[i+1], p2=pts[i+2], p3=pts[i+3];
+    const tau=adaptiveTauFor(p1,p2);
+    const [c1,c2]=_controls(p0,p1,p2,p3,tau);
+    path.push('C', c1, c2, p2);
+  }
+  if(closed) path.push('Z');
+  return path;
+}
+function isClosed(points){ if(points.length<3) return false; const a=points[0], b=points[points.length-1]; return Math.hypot(a[0]-b[0],a[1]-b[1])<0.6; }
+
+/* ===== Map draw/update ===== */
 function markerStyle(isSelected){ return { radius:DOT_RADIUS, color:'#ffffff', weight:DOT_WEIGHT, fillColor:isSelected?GREEN:RED, fillOpacity:1, pane:'markersPane', className:'or-marker-glow', interactive:false }; }
 function updateSelectionVisuals(){
   [...list.children].forEach(li=>{ if(!li.classList.contains('li')) return; +li.dataset.id===selectedId ? li.classList.add('li-selected') : li.classList.remove('li-selected');});
@@ -462,6 +532,8 @@ function refreshAllStateStyles(){ Object.keys(stateLayerByName).forEach(n=>apply
 
 function updateMap(){
   if(!map) return;
+
+  // clear
   for(const id in markerById){ if(markerById[id]) map.removeLayer(markerById[id]); }
   markerById={};
   Object.values(routeLines).forEach(l=>{ if(l) map.removeLayer(l); }); routeLines={};
@@ -471,12 +543,16 @@ function updateMap(){
     t.cities.forEach(c=>{ markerById[c.id]=L.circleMarker([c.lat,c.lon], markerStyle(c.id===selectedId)).addTo(map); });
   });
 
-  // routes (simple curve placeholder; replace with your adaptive path if you prefer)
+  // routes — one per trip (ALL trips)
   trips.forEach(t=>{
     if(t.cities.length>1){
       const pts=t.cities.map(c=>[c.lat,c.lon]);
-      const path=['M', pts[0], 'C', pts[0], pts[1], pts[1]];
-      routeLines[t.id]=L.curve(path,{pane:'routesPane',className:'route',color:t.color,weight:3}).addTo(map);
+      const closed=isClosed(pts);
+      const path=buildSmoothPathAdaptive(pts,{closed});
+      if(path){
+        const line = L.curve(path,{pane:'routesPane',className:'route',color:t.color,weight:ROUTE_WEIGHT});
+        routeLines[t.id]=line.addTo(map);
+      }
     }
   });
 
@@ -534,23 +610,24 @@ function totalTripMiles(trip){
 }
 function formatMiles(m){ return m>=1000 ? `${(m/1000).toFixed(1)}k miles` : `${Math.round(m/10)*10} miles`; }
 
-/* ===== Build poster (v0.084) ===== */
+/* Draw rounded rect helper */
+function roundRect(ctx,x,y,w,h,r){ const rr=Math.min(r, w/2, h/2); ctx.beginPath(); ctx.moveTo(x+rr,y); ctx.arcTo(x+w,y,x+w,y+h,rr); ctx.arcTo(x+w,y+h,x,y+h,rr); ctx.arcTo(x,y+h,x,y,rr); ctx.arcTo(x,y,x+w,y,rr); ctx.closePath(); }
+
+/* ===== Build poster (v0.085) ===== */
 async function buildPosterCanvas(mapCanvas){
+  const P = POSTER_LAYOUT;
   const canvas=document.createElement('canvas'); canvas.width=POSTER_W; canvas.height=POSTER_H;
   const ctx=canvas.getContext('2d');
 
   // Background
   ctx.fillStyle=POSTER_BG; ctx.fillRect(0,0,POSTER_W,POSTER_H);
 
-  // Story-safe margins
-  const MARGIN_TOP = 250;
-  const MARGIN_BOTTOM = 250;
-  const usableH = POSTER_H - MARGIN_TOP - MARGIN_BOTTOM;
+  // Safe area
+  const topSafe = P.SAFE_TOP;
+  const usableH = POSTER_H - P.SAFE_TOP - P.SAFE_BOTTOM;
 
-  // ---- Header left ----
-  const unlocked = unlockedStates.size || 0;
-  const hdrX = 60, hdrY = MARGIN_TOP + 50;
-
+  /* Header Left */
+  const hdrX = P.headerLeftX, hdrY = P.SAFE_TOP + P.headerTopY;
   ctx.fillStyle = '#eaf2ff';
   ctx.textBaseline = 'alphabetic';
   ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 2;
@@ -559,67 +636,67 @@ async function buildPosterCanvas(mapCanvas){
   ctx.fillText('STATES', hdrX, hdrY + 96);
   ctx.fillText('UNLOCKED', hdrX, hdrY + 96 + 84);
 
-  // ---- Big number aligned RIGHT ----
-  const numBaseY = hdrY + 96 + 70;
+  /* Big number right-aligned */
+  const unlocked = unlockedStates.size || 0;
   const bigStr = String(unlocked);
+  const numBaseY = hdrY + 96 + 70;
+  ctx.font = '900 180px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';  const bigW = ctx.measureText(bigStr).width;
+  ctx.font = '900 84px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif'; const slashW = ctx.measureText('/ 50').width;
+  const totalW = bigW + P.bigNumberGap + slashW;
+  const numX = POSTER_W - P.bigNumberRightPad - totalW;
+  ctx.font = '900 180px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';  ctx.fillText(bigStr, numX, numBaseY);
+  ctx.font = '900 84px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif'; ctx.fillText('/ 50', numX + bigW + P.bigNumberGap, numBaseY - 18);
 
-  const rightPad = 60;
-  const smallFont = '900 84px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
-  const bigFont   = '900 180px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
-
-  ctx.font = bigFont;  const bigW = ctx.measureText(bigStr).width;
-  ctx.font = smallFont; const slashW = ctx.measureText('/ 50').width;
-
-  const totalW = bigW + 18 + slashW;
-  const numX = POSTER_W - rightPad - totalW;
-
-  ctx.font = bigFont;  ctx.fillText(bigStr, numX, numBaseY);
-  ctx.font = smallFont; ctx.fillText('/ 50', numX + bigW + 18, numBaseY - 18);
-
-  // ---- Map (full-bleed-ish, no card) ----
-  const mapTop = hdrY + 96 + 84 + 40;
-  const mapHeight = Math.min(usableH * 0.50, 620);
-  const mapSidePad = 50;
-  const mapWidth = POSTER_W - mapSidePad * 2;
-
-  const ratio = mapCanvas.width / mapCanvas.height;
-  let drawW = mapWidth, drawH = mapWidth / ratio;
-  if(drawH > mapHeight){ drawH = mapHeight; drawW = mapHeight * ratio; }
-  const drawX = Math.round((POSTER_W - drawW)/2);
-  const drawY = Math.round(mapTop + (mapHeight - drawH)/2);
+  /* Map Card (rounded box) */
+  const mapTop = hdrY + 96 + 84 + P.mapCard.topGapFromHeader;
+  const cardH = Math.min(usableH * 0.50, P.mapCard.maxH);
+  const cardX = P.mapCard.sidePad;
+  const cardW = POSTER_W - P.mapCard.sidePad*2;
 
   ctx.save();
-  ctx.shadowColor='rgba(0,0,0,0.42)';
-  ctx.shadowBlur=28;
-  ctx.shadowOffsetY=12;
+  ctx.shadowColor='rgba(0,0,0,0.42)'; ctx.shadowBlur=P.mapCard.shadowBlur; ctx.shadowOffsetY=P.mapCard.shadowOffsetY;
+  roundRect(ctx, cardX, mapTop, cardW, cardH, P.mapCard.radius);
+  ctx.fillStyle='#0f2550';
+  ctx.fill();
+  ctx.restore();
+
+  // Draw the map image INSIDE the card (fit/contain)
+  const ratio = mapCanvas.width / mapCanvas.height;
+  let drawW = cardW * 0.94; // small inner pad for breathing
+  let drawH = drawW / ratio;
+  if(drawH > cardH * 0.74){ drawH = cardH * 0.74; drawW = drawH * ratio; }
+  const drawX = Math.round(cardX + (cardW-drawW)/2);
+  const drawY = Math.round(mapTop + (cardH-drawH)/2);
+
+  ctx.save();
+  roundRect(ctx, cardX, mapTop, cardW, cardH, P.mapCard.radius);
+  ctx.clip();
   ctx.drawImage(mapCanvas, drawX, drawY, drawW, drawH);
   ctx.restore();
 
-  // ---- Trip list header ----
-  const listHeaderY = drawY + drawH + 54;
+  /* Trip list header */
+  const listHeaderY = mapTop + cardH + P.listHeaderGap;
   ctx.fillStyle='#eaf2ff';
   ctx.shadowColor='rgba(0,0,0,0.30)'; ctx.shadowBlur=8; ctx.shadowOffsetY=2;
   ctx.font='900 72px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
   ctx.fillText('Highlighted  road trips:', 60, listHeaderY);
 
-  // ---- Trip bullets ----
-  const startY = listHeaderY + 64;
-  const lineGap = 64;
-  const dashW = 86, dashH = 12, dashOffsetY = -22;
-
+  /* Trip bullets */
+  const startY = listHeaderY + P.listStartGap;
+  const gap = P.bullet.lineGap;
   const tripSummaries=trips.map(t=>({id:t.id,color:t.color,name:t.name,miles:totalTripMiles(t)})).sort((a,b)=>b.miles-a.miles);
   ctx.font='900 42px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
   ctx.shadowColor='rgba(0,0,0,0.28)'; ctx.shadowBlur=6; ctx.shadowOffsetY=2;
 
   tripSummaries.forEach((row,i)=>{
-    const y=startY+i*lineGap;
-    ctx.fillStyle=row.color; ctx.fillRect(60, y+dashOffsetY, dashW, dashH);
-    ctx.fillStyle='#eaf2ff'; ctx.fillText(`${formatMiles(row.miles)}: ${row.name}`, 60+dashW+22, y);
+    const y=startY+i*gap;
+    ctx.fillStyle=row.color; ctx.fillRect(60, y+P.bullet.dashOffsetY, P.bullet.dashW, P.bullet.dashH);
+    ctx.fillStyle='#eaf2ff'; ctx.fillText(`${formatMiles(row.miles)}: ${row.name}`, 60+P.bullet.dashW+22, y);
   });
 
-  // ---- Vertical watermark ----
+  /* Vertical watermark */
   ctx.save();
-  ctx.translate(POSTER_W - 24, POSTER_H - MARGIN_BOTTOM + 10);
+  ctx.translate(POSTER_W - P.watermarkRightPad, POSTER_H - POSTER_LAYOUT.SAFE_BOTTOM + P.watermarkRaise);
   ctx.rotate(-Math.PI/2);
   ctx.fillStyle='#eaf2ff';
   ctx.shadowColor='rgba(0,0,0,0.35)'; ctx.shadowBlur=6; ctx.shadowOffsetY=2;
@@ -658,7 +735,6 @@ document.getElementById('miFeedback').addEventListener('click',()=>{
 document.addEventListener('DOMContentLoaded', ()=>{
   initMap();
   updateEmptyState();
-  // optional: deserialize from hash if you had that before
 });
 </script>
 </body>
