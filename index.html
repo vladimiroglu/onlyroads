@@ -9,6 +9,8 @@
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-curve"></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<!-- Poster-only dep (vector rendering) -->
+<script src="https://cdn.jsdelivr.net/npm/d3-geo@3"></script>
 
 <style>
 :root{
@@ -93,7 +95,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 /* Visual effects (only marker glow remains) */
 .or-marker-glow{ filter:url(#or-soft-glow); }
 
-/* 🔙 Restored: Color picker popover styles */
+/* Color picker popover (unchanged) */
 .cp-pop{position:absolute;z-index:12000;background:#0f2550;border:1px solid #223a6c;border-radius:12px;padding:10px;box-shadow:0 12px 30px rgba(0,0,0,.35);width:min(260px, 92vw)}
 .cp-row{display:flex;flex-wrap:wrap;gap:10px}
 .cp-swatch{width:28px;height:28px;border-radius:8px;border:1px solid #ffffff55;cursor:pointer}
@@ -102,6 +104,19 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 .cp-chip input[type="color"]{appearance:none;border:none;background:transparent;width:0;height:0;padding:0;margin:0}
 .cp-btn{background:#1a2f5a;border:1px solid var(--panelBorder);color:#fff;border-radius:10px;padding:8px 12px;cursor:pointer}
 .cp-btn:hover,.cp-chip:hover{background:#21366a}
+
+/* ===== Poster Preview overlay (poster-only styles) ===== */
+#orPosterOverlay{position:fixed;inset:0;z-index:12050;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px}
+.orPosterCard{background:#0b1c3a;border:1px solid #223a6c;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.45);padding:12px;max-width:96vw;max-height:96vh;display:flex;flex-direction:column;gap:10px}
+.orPosterTop{display:flex;align-items:center;justify-content:space-between;padding:2px 6px 0}
+.orPosterTitle{font-weight:700;letter-spacing:.3px;font-size:14px;color:#c9d6ff}
+.orPosterBtns{display:flex;gap:8px}
+.orPosterBtn{background:#1a2f5a;border:1px solid #2a3c67;color:#fff;border-radius:10px;padding:8px 12px;cursor:pointer}
+.orPosterBtn:hover{background:#21366a}
+.orPosterStage{display:grid;place-items:center;overflow:auto}
+.orPosterCanvas{width:min(360px, 70vw);height:auto;border-radius:10px;display:block}
+@media (min-width: 720px){ .orPosterCanvas{ width:min(540px, 70vw);} }
+@media (min-width: 1024px){ .orPosterCanvas{ width:min(660px, 70vw);} }
 
 @media (max-width: 640px){
   #map{aspect-ratio: 21/10;}
@@ -172,7 +187,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.109';
+const VERSION = '0.110';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -193,7 +208,7 @@ const CURVE_GAIN=1.25;
 
 /* Height-first fit config */
 const MAP_MARGINS = { top:5, right:5, bottom:5, left:5 };
-const POSTER_MARGINS = { top:16, right:18, bottom:16, left:18 }; /* unused now */
+const POSTER_SIDE_MARGIN = 35; // per your spec
 const HEIGHT_FIT_SAFETY = 1;
 
 const mapCounter=document.getElementById('mapCounter');
@@ -256,7 +271,192 @@ document.addEventListener('click',e=>{
   if(outside&&menu.classList.contains('show')){ menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false); }
 });
 
-/* (Placeholder) Save image — intentionally no-op per v0.109 */
+/* ===== Poster Preview (poster-only; everything else untouched) ===== */
+document.getElementById('miSave').addEventListener('click', async ()=>{
+  menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
+  try{
+    const overlay = createPosterOverlay();
+    document.body.appendChild(overlay.el);
+
+    // Render poster into the canvas
+    await renderPosterToCanvas(overlay.canvas);
+
+  }catch(err){
+    console.error(err);
+    toast('Could not create poster');
+  }
+});
+
+function createPosterOverlay(){
+  const el = document.createElement('div');
+  el.id = 'orPosterOverlay';
+
+  const card = document.createElement('div');
+  card.className = 'orPosterCard';
+
+  const top = document.createElement('div');
+  top.className = 'orPosterTop';
+  const title = document.createElement('div');
+  title.className = 'orPosterTitle';
+  title.textContent = 'Poster Preview';
+  const btns = document.createElement('div');
+  btns.className = 'orPosterBtns';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'orPosterBtn';
+  closeBtn.textContent = 'Close';
+  closeBtn.onclick = ()=> el.remove();
+
+  const dlBtn = document.createElement('button');
+  dlBtn.className = 'orPosterBtn';
+  dlBtn.textContent = 'Download PNG';
+  dlBtn.onclick = ()=>{
+    try{
+      const link = document.createElement('a');
+      link.href = canvas.toDataURL('image/png');
+      link.download = `onlyroads_poster_${Date.now()}.png`;
+      link.click();
+    }catch(e){
+      console.error(e);
+      toast('Download failed');
+    }
+  };
+
+  btns.appendChild(dlBtn); btns.appendChild(closeBtn);
+  top.appendChild(title); top.appendChild(btns);
+
+  const stage = document.createElement('div');
+  stage.className = 'orPosterStage';
+
+  const canvas = document.createElement('canvas');
+  canvas.className = 'orPosterCanvas';
+  canvas.width = 1080;   // poster resolution
+  canvas.height = 1920;
+
+  stage.appendChild(canvas);
+
+  card.appendChild(top);
+  card.appendChild(stage);
+  el.appendChild(card);
+
+  return { el, canvas };
+}
+
+/* Geo cache (poster-only) */
+let _posterStatesFC = null;
+async function loadConusStates(){
+  if(_posterStatesFC) return _posterStatesFC;
+  const res = await fetch("https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json");
+  const geo = await res.json();
+  const conus = geo.features.filter(f=>!["Alaska","Hawaii","Puerto Rico"].includes(f.properties.name));
+  _posterStatesFC = { type:"FeatureCollection", features: conus };
+  return _posterStatesFC;
+}
+
+function catmullRomToBezier(ctx, pts, {closed=false, tension=1.0}={}){
+  if(pts.length<2) return;
+  const p = pts.map(([x,y])=>({x,y}));
+  const get = (i)=>{
+    if(closed){
+      const n = p.length;
+      return p[(i+n)%n];
+    }
+    return p[Math.max(0, Math.min(p.length-1, i))];
+  };
+  ctx.beginPath();
+  ctx.moveTo(p[0].x, p[0].y);
+  for(let i=0;i<p.length-1;i++){
+    const p0=get(i-1), p1=get(i), p2=get(i+1), p3=get(i+2);
+    const c1x = p1.x + (p2.x - p0.x) * (tension/6);
+    const c1y = p1.y + (p2.y - p0.y) * (tension/6);
+    const c2x = p2.x - (p3.x - p1.x) * (tension/6);
+    const c2y = p2.y - (p3.y - p1.y) * (tension/6);
+    ctx.bezierCurveTo(c1x,c1y,c2x,c2y,p2.x,p2.y);
+  }
+  if(closed) ctx.closePath();
+}
+
+function isClosedScreen(pts, thresh=12){
+  if(pts.length<3) return false;
+  const [x1,y1] = pts[0], [x2,y2] = pts[pts.length-1];
+  return Math.hypot(x1-x2,y1-y2) < thresh;
+}
+
+async function renderPosterToCanvas(canvas){
+  const ctx = canvas.getContext('2d');
+  const W=canvas.width, H=canvas.height;
+  const SIDE=POSTER_SIDE_MARGIN;
+
+  // Background
+  ctx.fillStyle = '#0b1c3a';
+  ctx.fillRect(0,0,W,H);
+
+  // Load states and build projection (Albers USA)
+  const statesFC = await loadConusStates();
+
+  // Use fitExtent to guarantee exact side margins and best vertical fit
+  const projection = d3.geoAlbersUsa();
+  const path = d3.geoPath(projection, ctx);
+  projection.fitExtent([[SIDE, 0],[W-SIDE, H]], statesFC);
+
+  // Draw states (unlocked highlighted)
+  // Gather unlocked from current app state
+  const unlocked = new Set();
+  trips.forEach(t=>t.cities.forEach(c=>{
+    const canon = canonicalStateName(c.stateFull||c.stateAbbr);
+    if(canon) unlocked.add(canon);
+  }));
+
+  for(const f of statesFC.features){
+    const name = f.properties?.name;
+    const isUnlocked = unlocked.has(name);
+    ctx.beginPath();
+    path(f); // pushes path into ctx
+    if(isUnlocked){
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#0b1c3a';
+      ctx.stroke();
+    }else{
+      ctx.fillStyle = '#0b1c3a';
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+    }
+  }
+
+  // Draw routes (per trip)
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  for(const t of trips){
+    if(!t.cities || t.cities.length<2) continue;
+    const pts = t.cities.map(c=> projection([c.lon, c.lat])).filter(Boolean);
+    if(pts.length<2) continue;
+    const closed = isClosedScreen(pts);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = t.color || '#45a3ff';
+    catmullRomToBezier(ctx, pts, {closed, tension:1.0});
+    ctx.stroke();
+  }
+
+  // Draw city dots on top
+  for(const t of trips){
+    for(const c of t.cities||[]){
+      const p = projection([c.lon, c.lat]);
+      if(!p) continue;
+      const [x,y] = p;
+      ctx.beginPath();
+      ctx.arc(x,y,4,0,Math.PI*2);
+      ctx.fillStyle = '#ff0000';
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+    }
+  }
+}
 
 /* Share & feedback */
 document.getElementById('miShare').addEventListener('click', async ()=>{
@@ -479,7 +679,7 @@ function activateTripById(id){
   renderList(); updateMap(); updateEmptyState(); highlightLegendActive(); updateShareURL();
 }
 
-/* ===== Map / drawing ===== */
+/* ===== Map / drawing (unchanged) ===== */
 let map, statesLayer, stateLayerByName={}, conusBounds=null;
 let markerById={}, routeLines={}, unlockedStates=new Set();
 
@@ -569,7 +769,7 @@ function recomputeUnlockedFromCities(){
   updateCounter(); refreshAllStateStyles();
 }
 
-/* Curves */
+/* Curves for Leaflet map (unchanged) */
 function _scaledDx(p1,p2){ const avg=((p1[0]+p2[0])/2)*Math.PI/180; return (p2[1]-p1[1])*Math.cos(avg); }
 function adaptiveTauFor(p1,p2){ const dx=Math.abs(_scaledDx(p1,p2)), dy=Math.abs(p2[0]-p1[0]), d=Math.hypot(dx,dy); const r=dx/(dx+dy+1e-9); let tau=0.62+(r-0.5)*0.36+Math.min(d/5,1)*0.16; return Math.max(0.5,Math.min(0.85,tau)); }
 function _controls(p0,p1,p2,p3,tau){
