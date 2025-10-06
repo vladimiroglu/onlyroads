@@ -177,7 +177,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.100';
+const VERSION = '0.101';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -676,33 +676,71 @@ function updateShareURL(){
 }
 
 /* ===== Poster snapshot/build ===== */
+
+/* NEW helpers for stable snapshots */
+function getAllPanes() {
+  const panes = [
+    map?.getPane('mapPane'),
+    map?.getPane('tilePane'),
+    map?.getPane('overlayPane'),
+    map?.getPane('shadowPane'),
+    map?.getPane('markerPane'),
+    map?.getPane('tooltipPane'),
+    map?.getPane('popupPane'),
+    map?.getPane('statesPane'),
+    map?.getPane('routesPane'),
+    map?.getPane('markersPane'),
+  ].filter(Boolean);
+  return panes;
+}
+function freezePaneTransforms() {
+  const panes = getAllPanes();
+  const stash = panes.map(p => [p, p.style.transform]);
+  panes.forEach(p => { p.style.transform = 'translate(0px, 0px)'; });
+  return () => { stash.forEach(([p, t]) => { p.style.transform = t || ''; }); };
+}
+function waitNextFrame() {
+  return new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+}
+function invalidateAndFit(bounds, margins) {
+  return new Promise(resolve => {
+    map.once('moveend', resolve);
+    map.invalidateSize(false);
+    if (bounds) fitByHeight(bounds, margins);
+  });
+}
+
 async function snapshotMapForPoster(){
   const mapEl=document.getElementById('map');
-  const original = { width: mapEl.style.width, height: mapEl.style.height, transform: mapEl.style.transform };
-
   const cardX = 54, cardW = POSTER_W-108;
   const cardY = POSTER_INSET_TOP_SAFE + 160;
   const cardH = 420;
   const snapW = Math.floor(cardW);
   const snapH = Math.floor(cardH);
 
+  const original = { width: mapEl.style.width, height: mapEl.style.height, transform: mapEl.style.transform };
+
   mapEl.style.transform = '';
   mapEl.style.width = snapW+'px';
   mapEl.style.height = snapH+'px';
 
-  map.invalidateSize();
-  if(conusBounds){ fitByHeight(conusBounds, POSTER_MARGINS); }
+  const unfreeze = freezePaneTransforms();
 
-  const canvas = await html2canvas(mapEl, {useCORS:true, backgroundColor:null, scale:2});
+  await invalidateAndFit(conusBounds, POSTER_MARGINS);
+  await waitNextFrame();
 
+  const canvas = await html2canvas(mapEl, {useCORS:true, backgroundColor:null, scale:3});
+
+  unfreeze();
   mapEl.style.width = original.width;
   mapEl.style.height = original.height;
   mapEl.style.transform = original.transform;
-  map.invalidateSize();
-  fitUS_HeightFirst();
+
+  await invalidateAndFit(conusBounds, MAP_MARGINS);
 
   return {canvas, cardX, cardY, cardW, cardH};
 }
+
 async function buildPosterCanvas(mapShot){
   const canvas=document.createElement('canvas'); canvas.width=POSTER_W; canvas.height=POSTER_H;
   const ctx=canvas.getContext('2d');
