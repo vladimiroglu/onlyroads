@@ -178,7 +178,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.097';
+const VERSION = '0.098';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -386,45 +386,59 @@ document.getElementById('deleteTripBtn').addEventListener('click',()=>{
   window.applyTripColor=function(hex,persist){ const t=getActiveTrip(); if(!t) return; t.color=hex; tripColorChip.style.background=hex; renderLegend(); updateMap(); if(persist) updateShareURL(); };
 })();
 
-/* ===== Autocomplete (robust selection before blur) ===== */
+/* ===== Autocomplete (delegated, capture-phase) ===== */
 let acTimer=null;
+let acItemsCache=[]; // keeps current result set for delegated handler
 const headerEl = document.querySelector('header');
 function headerHeight(){ return headerEl?.getBoundingClientRect().height || 0; }
 function ensureCityBoxVisible(instant=false){ const r=controls.getBoundingClientRect(); const topTarget=(window.scrollY+r.top)-headerHeight()-8; window.scrollTo({top:Math.max(0,topTarget),behavior:instant?'auto':'smooth'}); }
 function resizeAutocompleteForViewport(){ const inputRect=input.getBoundingClientRect(); const vv=window.visualViewport; const viewportBottom=vv?(vv.offsetTop+vv.height):window.innerHeight; const available=Math.max(120,viewportBottom-inputRect.bottom-8); ac.style.maxHeight=`${Math.floor(available)}px`; }
 function keyboardAwarePadding(on){ if(on && window.visualViewport){ const vv=window.visualViewport; const kb=Math.max(0, window.innerHeight - (vv.height||window.innerHeight)); document.body.style.paddingBottom=`${kb+16}px`; }else{ document.body.style.paddingBottom=''; } }
 
-function handlePick(it){
+function handlePickIndex(idx){
+  const it = acItemsCache[idx];
+  if(!it) return;
   ac.classList.remove('show');
   input.value='';
   addCity(it);
+  // prevent the doc click from re-opening things; also move focus out
+  input.blur();
 }
-function bindPick(el, it){
-  let handled=false;
-  const once = fn => e => { if(handled) return; handled=true; fn(e); };
-  el.addEventListener('mousedown', once(()=>handlePick(it)));
-  el.addEventListener('touchstart', once(()=>handlePick(it)), {passive:true});
-  el.addEventListener('click', once(()=>handlePick(it)));
+function delegatedPickHandler(e){
+  const item = e.target.closest('.ac-item');
+  if(!item || !ac.contains(item)) return;
+  // capture before blur and outside-click handlers
+  e.preventDefault();
+  e.stopPropagation();
+  const idx = +item.dataset.i;
+  handlePickIndex(idx);
 }
+ac.addEventListener('pointerdown', delegatedPickHandler, {capture:true});
+ac.addEventListener('mousedown', delegatedPickHandler, {capture:true});
+ac.addEventListener('touchstart', delegatedPickHandler, {capture:true, passive:false});
 
 input.addEventListener('focus', ()=>{ ensureCityBoxVisible(false); resizeAutocompleteForViewport(); keyboardAwarePadding(true); });
 input.addEventListener('input', ()=>{
   const q=input.value.trim();
   if(acTimer)clearTimeout(acTimer);
-  if(!q){ac.classList.remove('show');ac.innerHTML='';return;}
+  if(!q){ac.classList.remove('show');ac.innerHTML='';acItemsCache=[];return;}
   acTimer=setTimeout(()=>fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=us&limit=6&q=${encodeURIComponent(q)}`)
     .then(r=>r.json()).then(rows=>{
       ac.innerHTML='';
-      const items=rows.map(row=>{
-        const a=row.address||{}; const cityName=a.city||a.town||a.village||a.hamlet||row.display_name.split(',')[0];
-        const stateFull=canonicalStateName(a.state||''); const ab=STATE_ABBR[stateFull]||'';
+      acItemsCache = rows.map(row=>{
+        const a=row.address||{};
+        const cityName=a.city||a.town||a.village||a.hamlet||row.display_name.split(',')[0];
+        const stateFull=canonicalStateName(a.state||'');
+        const ab=STATE_ABBR[stateFull]||'';
         if(!cityName||!ab||!stateFull) return null;
         return {label:`${cityName}, ${ab}`, name:cityName, stateFull, stateAbbr:ab, lat:+row.lat, lon:+row.lon};
       }).filter(Boolean);
-      if(!items.length){ac.classList.remove('show');return;}
-      items.forEach(it=>{
-        const d=document.createElement('div'); d.className='ac-item'; d.textContent=it.label;
-        bindPick(d, it);
+      if(!acItemsCache.length){ac.classList.remove('show');return;}
+      acItemsCache.forEach((it,idx)=>{
+        const d=document.createElement('div');
+        d.className='ac-item';
+        d.dataset.i = String(idx);
+        d.textContent=it.label;
         ac.appendChild(d);
       });
       ac.classList.add('show'); resizeAutocompleteForViewport(); ensureCityBoxVisible(true);
@@ -625,6 +639,22 @@ function updateMap(){
   });
 
   fitUS_HeightFirst(); updateSelectionVisuals();
+}
+
+/* City add/remove */
+function addCity(item){
+  const t=getActiveTrip(); if(!t){toast('Create a trip first (tap +)');return;}
+  item.id=++cidCounter; t.cities.push(item);
+  recomputeUnlockedFromCities(); updateMap(); renderList(); updateSelectionVisuals(); updateEmptyState();
+  toast(`Added ${item.name}, ${item.stateAbbr}`);
+}
+function removeCityById(id){
+  const t=getActiveTrip(); if(!t) return;
+  const idx=t.cities.findIndex(c=>c.id===id); if(idx===-1) return;
+  const removed=t.cities[idx]; t.cities.splice(idx,1);
+  if(selectedId===id) selectedId=null;
+  recomputeUnlockedFromCities(); updateMap(); renderList(); updateSelectionVisuals(); updateEmptyState();
+  toast(`Removed ${removed.name}, ${removed.stateAbbr}`);
 }
 
 /* Serialize/share */
