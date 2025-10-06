@@ -85,7 +85,7 @@ body.exporting #fabAddTrip{visibility:hidden}
 .legend .item.is-active{border-color:#3a58a2;color:#e8f0ff;box-shadow:0 0 0 2px #3a58a215 inset}
 .legend .chip{width:14px;height:14px;border-radius:50%;border:1px solid #fff6}
 
-/* Menu (anchored to kebab — fixed, like prod) */
+/* Menu (anchored to kebab — fixed) */
 .menu{position:fixed; z-index:11000;background:#0f2550;border:1px solid #223a6c;border-radius:12px;min-width:230px;display:none;box-shadow:0 12px 30px rgba(0,0,0,.35);overflow:hidden}
 .menu.show{display:block}
 .mi{padding:10px 14px;border-bottom:1px solid #193566;cursor:pointer;font-size:14.5px;letter-spacing:.2px}
@@ -99,7 +99,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 /* Visual effects (only marker glow remains) */
 .or-marker-glow{ filter:url(#or-soft-glow); }
 
-/* Color picker popover (restored styles) */
+/* Color picker popover */
 .cp-pop{position:absolute;z-index:12000;background:#0f2550;border:1px solid #223a6c;border-radius:12px;padding:10px;box-shadow:0 12px 30px rgba(0,0,0,.35);width:min(260px, 92vw)}
 .cp-row{display:flex;flex-wrap:wrap;gap:10px}
 .cp-swatch{width:28px;height:28px;border-radius:8px;border:1px solid #ffffff55;cursor:pointer}
@@ -178,7 +178,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.096';
+const VERSION = '0.097';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -199,7 +199,7 @@ const CURVE_GAIN=1.25;
 
 /* Height-first fit config */
 const MAP_MARGINS = { top:5, right:5, bottom:5, left:5 };
-const POSTER_MARGINS = { top:16, right:18, bottom:16, left:18 }; // poster later
+const POSTER_MARGINS = { top:16, right:18, bottom:16, left:18 };
 const HEIGHT_FIT_SAFETY = 1;
 
 /* Poster knobs (kept for now) */
@@ -255,19 +255,13 @@ const kebabBtn=document.getElementById('kebabBtn'); const menu=document.getEleme
   window.OnlyRoadsHeader={forceShow(on=true){ headerEl.classList.toggle('force-show',!!on); if(on) headerEl.classList.remove('is-hidden'); }, show, hide};
 })();
 
-/* Anchored menu positioning (restored) */
+/* Anchored menu positioning (fixed near the kebab) */
 function positionMenu(){
   if(!menu.classList.contains('show')) return;
   const r=kebabBtn.getBoundingClientRect();
   const margin=8;
-  const left=Math.min(
-    Math.max(8, r.right - menu.offsetWidth),
-    window.innerWidth - menu.offsetWidth - 8
-  );
-  const top=Math.min(
-    r.bottom + margin,
-    window.innerHeight - menu.offsetHeight - 8
-  );
+  const left=Math.min(Math.max(8, r.right - menu.offsetWidth), window.innerWidth - menu.offsetWidth - 8);
+  const top=Math.min(r.bottom + margin, window.innerHeight - menu.offsetHeight - 8);
   menu.style.left = `${left}px`;
   menu.style.top  = `${top}px`;
 }
@@ -392,13 +386,26 @@ document.getElementById('deleteTripBtn').addEventListener('click',()=>{
   window.applyTripColor=function(hex,persist){ const t=getActiveTrip(); if(!t) return; t.color=hex; tripColorChip.style.background=hex; renderLegend(); updateMap(); if(persist) updateShareURL(); };
 })();
 
-/* ===== Autocomplete (keyboard-aware) ===== */
+/* ===== Autocomplete (robust selection before blur) ===== */
 let acTimer=null;
 const headerEl = document.querySelector('header');
 function headerHeight(){ return headerEl?.getBoundingClientRect().height || 0; }
 function ensureCityBoxVisible(instant=false){ const r=controls.getBoundingClientRect(); const topTarget=(window.scrollY+r.top)-headerHeight()-8; window.scrollTo({top:Math.max(0,topTarget),behavior:instant?'auto':'smooth'}); }
 function resizeAutocompleteForViewport(){ const inputRect=input.getBoundingClientRect(); const vv=window.visualViewport; const viewportBottom=vv?(vv.offsetTop+vv.height):window.innerHeight; const available=Math.max(120,viewportBottom-inputRect.bottom-8); ac.style.maxHeight=`${Math.floor(available)}px`; }
 function keyboardAwarePadding(on){ if(on && window.visualViewport){ const vv=window.visualViewport; const kb=Math.max(0, window.innerHeight - (vv.height||window.innerHeight)); document.body.style.paddingBottom=`${kb+16}px`; }else{ document.body.style.paddingBottom=''; } }
+
+function handlePick(it){
+  ac.classList.remove('show');
+  input.value='';
+  addCity(it);
+}
+function bindPick(el, it){
+  let handled=false;
+  const once = fn => e => { if(handled) return; handled=true; fn(e); };
+  el.addEventListener('mousedown', once(()=>handlePick(it)));
+  el.addEventListener('touchstart', once(()=>handlePick(it)), {passive:true});
+  el.addEventListener('click', once(()=>handlePick(it)));
+}
 
 input.addEventListener('focus', ()=>{ ensureCityBoxVisible(false); resizeAutocompleteForViewport(); keyboardAwarePadding(true); });
 input.addEventListener('input', ()=>{
@@ -417,10 +424,7 @@ input.addEventListener('input', ()=>{
       if(!items.length){ac.classList.remove('show');return;}
       items.forEach(it=>{
         const d=document.createElement('div'); d.className='ac-item'; d.textContent=it.label;
-        /* Use pointerdown so selection works reliably on iOS/Android before blur hides the list */
-        d.addEventListener('pointerdown',(ev)=>{ ev.preventDefault(); ac.classList.remove('show'); input.value=''; addCity(it); });
-        /* Fallback click (desktop) */
-        d.addEventListener('click',()=>{ ac.classList.remove('show'); input.value=''; addCity(it); });
+        bindPick(d, it);
         ac.appendChild(d);
       });
       ac.classList.add('show'); resizeAutocompleteForViewport(); ensureCityBoxVisible(true);
