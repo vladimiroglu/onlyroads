@@ -203,7 +203,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.080';
+const VERSION = '0.081';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -424,10 +424,14 @@ function renderList(){
 let map, statesGlowLayer, statesLayer, stateLayerByName={}, conusBounds=null;
 let markerById={}, routeLines={}, unlockedStates=new Set();
 
-/* Tweakables for size & micro-alignment */
-const MAP_FINE_SCALE = 0.85;   // your working value
-const MAP_Y_NUDGE   = -213;    // pixels (negative = up)
-const MAP_X_NUDGE   = -50;     // pixels (negative = left)
+/* Tweakables for desktop size & micro-alignment */
+const MAP_FINE_SCALE = 0.85;   // desktop-only fine scale
+const MAP_Y_NUDGE   = -213;    // px (negative = up)
+const MAP_X_NUDGE   = -50;     // px (negative = left)
+
+/* Fine-scale gate: desktop/tablet only; phones use native fit */
+const FINE_SCALE_MIN_W = 900; // px
+function fineScaleActive(){ return window.innerWidth >= FINE_SCALE_MIN_W; }
 
 /* Height-fit config */
 const AUTO_FIT = { OVERSCAN: 1.06, PAD: 8 };
@@ -490,15 +494,15 @@ function autoFitUSHeight() {
   map.setView(center, z, { animate:false });
   requestAnimationFrame(applyFineScale);
 }
-window.addEventListener('resize', ()=>autoFitUSHeight(), {passive:true});
+window.addEventListener('resize', ()=>{
+  autoFitUSHeight();
+  requestAnimationFrame(applyFineScale);
+}, {passive:true});
 
-/* Fine scale + precise centering + nudges */
+/* Fine scale + precise centering (desktop only) + nudges */
 function applyFineScale() {
   const pane = map?.getPanes()?.mapPane;
   if (!pane || !conusBounds) return;
-
-  const z   = map.getZoom();
-  const cPx = map.project(conusBounds.getCenter(), z);       // US center (pane pixels)
 
   const base    = pane.style.transform || '';
   const cleaned = base
@@ -506,15 +510,24 @@ function applyFineScale() {
     .replace(/\s+translateX\([^)]+\)/, '')
     .replace(/\s+translateY\([^)]+\)/, '');
 
-  // perfect vertical center, then apply manual Y nudge
+  // Phones & small screens: clear our transforms and exit
+  if (!fineScaleActive()) {
+    pane.style.transformOrigin = '';
+    pane.style.transform = cleaned;
+    return;
+  }
+
+  // Desktop: scale around US center and nudge
+  const z   = map.getZoom();
+  const cPx = map.project(conusBounds.getCenter(), z);
+
   const size   = map.getSize();
   const pNE    = map.project(conusBounds.getNorthEast(), z);
   const pSW    = map.project(conusBounds.getSouthWest(), z);
   const hUS    = Math.abs(pNE.y - pSW.y);
   const dyCent = (size.y - hUS * MAP_FINE_SCALE) / 2;
   const dy     = dyCent + MAP_Y_NUDGE;
-
-  const dx     = MAP_X_NUDGE; // manual horizontal nudge (negative = left)
+  const dx     = MAP_X_NUDGE;
 
   pane.style.transformOrigin = `${cPx.x}px ${cPx.y}px`;
   pane.style.transform = `${cleaned} translateX(${dx}px) translateY(${dy}px) scale(${MAP_FINE_SCALE})`;
