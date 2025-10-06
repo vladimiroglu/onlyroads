@@ -156,7 +156,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.104';
+const VERSION = '0.105';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -175,19 +175,16 @@ const PALETTE=['#45a3ff','#ff6b6b','#ffd166','#06d6a0','#c792ea','#ff9f1c','#00b
 const DOT_RADIUS=3.5, DOT_WEIGHT=1, RED='#ff0000', GREEN='#30e6b6';
 const CURVE_GAIN=1.25;
 
-/* Height-first fit config */
+/* Fit config */
 const MAP_MARGINS = { top:5, right:5, bottom:5, left:5 };
 const POSTER_MARGINS = { top:16, right:18, bottom:16, left:18 };
 const HEIGHT_FIT_SAFETY = 1;
 
-/* Poster knobs (map only — no box on poster) */
+/* Poster knobs */
 const POSTER_W = 1080, POSTER_H = 1920;
 const POSTER_BG = '#0b1c3a';
 const POSTER_INSET_TOP_SAFE = 250;
-/* ~35px safety margins left/right on poster */
-const POSTER_SIDE_MARGIN = 35;
-
-/* Map scale & offsets (kept for tweaks if needed) */
+const POSTER_SIDE_MARGIN = 35;   // ~35px safety each side
 const POSTER_MAP_SCALE = 1.00;
 const POSTER_MAP_INSET_X = 0, POSTER_MAP_INSET_Y = 0;
 
@@ -224,11 +221,10 @@ const kebabBtn=document.getElementById('kebabBtn'); const menu=document.getEleme
   window.OnlyRoadsHeader={forceShow(on=true){ headerEl.classList.toggle('force-show',!!on); if(on) headerEl.classList.remove('is-hidden'); }, show, hide};
 })();
 
-/* Anchored menu positioning (fixed near the kebab) */
+/* Menu positioning */
 function positionMenu(){
   if(!menu.classList.contains('show')) return;
-  const r=kebabBtn.getBoundingClientRect();
-  const margin=8;
+  const r=kebabBtn.getBoundingClientRect(); const margin=8;
   const left=Math.min(Math.max(8, r.right - menu.offsetWidth), window.innerWidth - menu.offsetWidth - 8);
   const top=Math.min(r.bottom + margin, window.innerHeight - menu.offsetHeight - 8);
   menu.style.left = `${left}px`;  menu.style.top  = `${top}px`;
@@ -253,7 +249,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
   try{
     document.body.classList.add('exporting');
     await new Promise(r=>requestAnimationFrame(r));
-    const mapShot = await snapshotMapForPoster(); // SVG-based off-screen export
+    const mapShot = await snapshotMapForPoster(); // off-screen SVG export
     document.body.classList.remove('exporting');
     const poster=await buildPosterCanvas(mapShot);
     const a=document.createElement('a'); a.href=poster.toDataURL('image/png'); a.download=`onlyroads_poster_${Date.now()}.png`; a.click();
@@ -335,7 +331,7 @@ document.getElementById('deleteTripBtn').addEventListener('click',()=>{
   recomputeUnlockedFromCities(); updateMap(); renderList(); refreshTripUI(); updateEmptyState(); updateShareURL();
 });
 
-/* ===== Color picker ===== */
+/* ===== Color picker (simple palette) ===== */
 (function initColorPicker(){
   const cp=document.createElement('div'); cp.id='colorPicker'; cp.className='cp-pop'; cp.hidden=true;
   const row=document.createElement('div'); row.id='cpSwatches'; row.className='cp-row'; cp.appendChild(row);
@@ -392,6 +388,8 @@ ac.addEventListener('pointerdown', delegatedPickHandler, {capture:true});
 ac.addEventListener('mousedown', delegatedPickHandler, {capture:true});
 ac.addEventListener('touchstart', delegatedPickHandler, {capture:true, passive:false});
 
+const controls=document.getElementById('controls');
+const input=document.getElementById('cityInput');
 input.addEventListener('focus', ()=>{ ensureCityBoxVisible(false); resizeAutocompleteForViewport(); keyboardAwarePadding(true); });
 input.addEventListener('input', ()=>{
   const q=input.value.trim();
@@ -481,20 +479,26 @@ function fitByHeight(bounds, m){
 }
 function fitUS_HeightFirst(){ fitByHeight(conusBounds, MAP_MARGINS); }
 
-/* Export-map fit helpers */
+/* Export map fit helpers (width-first) */
 function setZoomByFactorOn(m, f){ if(m && f>0 && f!==1){ m.setZoom(m.getZoom()+Math.log2(f),{animate:false}); } }
-function fitByHeightOn(m, bounds, pad){
+function fitByWidthOn(m, bounds, pad){
   if(!m || !bounds) return;
   m.fitBounds(bounds,{paddingTopLeft:[pad.left,pad.top],paddingBottomRight:[pad.right,pad.bottom],animate:false});
   const size=m.getSize();
-  const targetH=Math.max(1, size.y-(pad.top+pad.bottom));
+  const targetW = Math.max(1, size.x - (pad.left+pad.right));
+  const targetH = Math.max(1, size.y - (pad.top+pad.bottom));
+
   const nw=bounds.getNorthWest(), sw=bounds.getSouthWest(), ne=bounds.getNorthEast();
-  const pN=m.latLngToLayerPoint(nw), pS=m.latLngToLayerPoint(sw), pW=m.latLngToLayerPoint(nw), pE=m.latLngToLayerPoint(ne);
-  const curH=Math.abs(pN.y-pS.y);
-  if(curH>0 && targetH>0){ setZoomByFactorOn(m,(targetH/curH)*HEIGHT_FIT_SAFETY); }
-  const maxW=Math.max(1,size.x-(pad.left+pad.right));
-  const curW=Math.abs(pE.x-pW.x);
-  if(curW>maxW){ setZoomByFactorOn(m, maxW/curW); }
+  const pW=m.latLngToLayerPoint(nw), pE=m.latLngToLayerPoint(ne), pN=m.latLngToLayerPoint(nw), pS=m.latLngToLayerPoint(sw);
+
+  const curW=Math.abs(pE.x - pW.x);
+  const curH=Math.abs(pN.y - pS.y);
+
+  if(curW>0){ setZoomByFactorOn(m, (targetW/curW)); }
+  // if height now exceeds, dial back
+  const pW2=m.latLngToLayerPoint(nw), pE2=m.latLngToLayerPoint(ne), pN2=m.latLngToLayerPoint(nw), pS2=m.latLngToLayerPoint(sw);
+  const newH=Math.abs(pN2.y - pS2.y);
+  if(newH>targetH){ setZoomByFactorOn(m, targetH/newH); }
 }
 
 /* Styles / markers */
@@ -540,14 +544,13 @@ function buildSmoothPathAdaptive(points,{closed=false}={}){
 }
 function isClosed(points){ if(points.length<3) return false; const a=points[0], b=points[points.length-1]; return Math.hypot(a[0]-b[0],a[1]-b[1])<0.6; }
 
-/* Render order fix: draw routes first, then markers (so dots sit on top). */
+/* Render order: routes first, then markers (dots on top). */
 function updateMap(){
   if(!map) return;
   for(const id in markerById){ if(markerById[id]) map.removeLayer(markerById[id]); }
   markerById={};
   Object.values(routeLines).forEach(l=>{ if(l) map.removeLayer(l); }); routeLines={};
 
-  /* Routes first */
   trips.forEach(t=>{
     if(t.cities.length>1){
       const pts=t.cities.map(c=>[c.lat,c.lon]);
@@ -557,7 +560,6 @@ function updateMap(){
     }
   });
 
-  /* Then markers (above lines) */
   trips.forEach(t=>{
     t.cities.forEach(c=>{
       markerById[c.id]=L.circleMarker([c.lat,c.lon], markerStyle(c.id===selectedId)).addTo(map);
@@ -607,7 +609,7 @@ function updateShareURL(){
   return url.toString();
 }
 
-/* ===== Poster snapshot/build (SVG pipeline, no box) ===== */
+/* ===== Poster snapshot/build (SVG pipeline, width-first fit) ===== */
 function waitNextFrame(){ return new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))); }
 
 async function svgToCanvas(svgNode, scale=3){
@@ -631,45 +633,35 @@ async function svgToCanvas(svgNode, scale=3){
 }
 
 async function snapshotMapForPoster(){
-  /* Wider poster map: ~35px side margins */
   const cardX = POSTER_SIDE_MARGIN;
-  const cardW = POSTER_W - POSTER_SIDE_MARGIN*2;
+  const cardW = POSTER_W - POSTER_SIDE_MARGIN*2;   // fill width with side safety
   const cardY = POSTER_INSET_TOP_SAFE;
-  const cardH = 720; // taller slot so the map can breathe vertically
+  const cardH = 720;  // generous height; width-first fit will dominate
 
-  const snapW = Math.floor(cardW), snapH = Math.floor(cardH);
-
-  // Off-screen container
   const off = document.createElement('div');
-  off.style.position='fixed';
-  off.style.left='-10000px';
-  off.style.top='0';
-  off.style.width = snapW+'px';
-  off.style.height= snapH+'px';
+  off.style.position='fixed'; off.style.left='-10000px'; off.style.top='0';
+  off.style.width = Math.floor(cardW)+'px';
+  off.style.height= Math.floor(cardH)+'px';
   off.style.background='transparent';
   document.body.appendChild(off);
 
-  // Minimal map
   const expMap=L.map(off,{
-    preferCanvas:false,
-    zoomControl:false,attributionControl:false,
+    preferCanvas:false, zoomControl:false,attributionControl:false,
     dragging:false,scrollWheelZoom:false,doubleClickZoom:false,
     boxZoom:false,keyboard:false,touchZoom:false,worldCopyJump:false,
     zoomSnap:0, zoomDelta:0.25
   });
 
-  // States
   const states=L.geoJSON(conusGeoJSON||{type:"FeatureCollection",features:[]},{
     style:(f)=> unlockedStates.has(f.properties.name)
       ? {color:'#0b1c3a',weight:2,fillColor:'#ffffff',fillOpacity:1}
       : {color:'#ffffff',weight:1,fillColor:'#0b1c3a',fillOpacity:1}
   }).addTo(expMap);
 
-  // Fit
   const tmpBounds = conusBounds || states.getBounds();
-  fitByHeightOn(expMap, tmpBounds, POSTER_MARGINS);
+  fitByWidthOn(expMap, tmpBounds, POSTER_MARGINS); // **** width-first ****
 
-  // Routes FIRST (so markers will render on top)
+  // Routes first (under dots)
   trips.forEach(t=>{
     if(t.cities.length>1){
       const pts=t.cities.map(c=>[c.lat,c.lon]);
@@ -679,7 +671,7 @@ async function snapshotMapForPoster(){
     }
   });
 
-  // Markers AFTER lines (on top)
+  // Dots last (on top)
   trips.forEach(t=>{
     t.cities.forEach(c=>{
       L.circleMarker([c.lat,c.lon], { radius:DOT_RADIUS, color:'#ffffff', weight:DOT_WEIGHT, fillColor:RED, fillOpacity:1, interactive:false, className:'or-marker-glow' }).addTo(expMap);
@@ -692,8 +684,7 @@ async function snapshotMapForPoster(){
   const svg = off.querySelector('.leaflet-overlay-pane svg');
   const mapCanvas = await svgToCanvas(svg, 3);
 
-  expMap.remove();
-  off.remove();
+  expMap.remove(); off.remove();
 
   return {canvas: mapCanvas, cardX, cardY, cardW, cardH};
 }
