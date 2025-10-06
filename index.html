@@ -80,7 +80,7 @@ body.exporting #fabAddTrip{visibility:hidden}
 /* Legend */
 .legend{display:none;flex-wrap:wrap;gap:10px;margin:6px 2px 0}
 .legend.show{display:flex}
-.legend .item{display:flex;align-items:center;gap:8px;background:#0f2550;border:1px solid #223a6c;padding:6px 10px;border-radius:12px;font-size:13px;color:var(--ink-dim);cursor:pointer;outline:none}
+.legend .item{display:flex;align-items:center;gap:8px;background:#0f2550;border:1px solid #223a6c;padding:6px 10px;border-radius:12px;font-size:13px;color:#var(--ink-dim);cursor:pointer;outline:none}
 .legend .item:hover{background:#153063}
 .legend .item.is-active{border-color:#3a58a2;color:#e8f0ff;box-shadow:0 0 0 2px #3a58a215 inset}
 .legend .chip{width:14px;height:14px;border-radius:50%;border:1px solid #fff6}
@@ -168,7 +168,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.091';
+const VERSION = '0.092';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -187,9 +187,10 @@ const PALETTE=['#45a3ff','#ff6b6b','#ffd166','#06d6a0','#c792ea','#ff9f1c','#00b
 const DOT_RADIUS=3.5, DOT_WEIGHT=1, RED='#ff0000', GREEN='#30e6b6';
 const CURVE_GAIN=1.25;
 
-/* Deterministic margins (keep box; minimize top/bottom gaps) */
-const MAP_MARGINS = { top:12, right:20, bottom:12, left:20 };
-const POSTER_MARGINS = { top:12, right:18, bottom:12, left:18 };
+/* Height-first fit config */
+const MAP_MARGINS = { top:16, right:20, bottom:16, left:20 };
+const POSTER_MARGINS = { top:16, right:18, bottom:16, left:18 };
+const HEIGHT_FIT_SAFETY = 0.98; // slight deflate so edges breathe
 
 /* Poster map knobs */
 const POSTER_W = 1080, POSTER_H = 1920;
@@ -423,7 +424,6 @@ function initMap(){
 
       const tmp=L.geoJSON({type:"FeatureCollection",features:conus}); conusBounds=tmp.getBounds();
 
-      // Restrict panning roughly to US
       map.setMaxBounds(conusBounds.pad(0.02));
 
       fitUS_HeightFirst();
@@ -438,36 +438,29 @@ function initMap(){
 function zoomByFactor(f){ if(f<=0) return; map.setZoom(map.getZoom()+Math.log2(f),{animate:false}); }
 function fitByHeight(bounds, m){
   if(!bounds || !map) return;
-  // 1) Standard fit (so everything is definitely in view)
+  // 1) Standard fit
   map.fitBounds(bounds,{
     paddingTopLeft:[m.left,m.top],
     paddingBottomRight:[m.right,m.bottom],
     animate:false
   });
 
-  // 2) Measure current vertical span of those bounds in pixels
+  // 2) Measure current vertical span in px
   const size=map.getSize();
   const targetH = Math.max(1, size.y - (m.top+m.bottom));
-
-  const nw=bounds.getNorthWest();
-  const sw=bounds.getSouthWest();
-  const ne=bounds.getNorthEast();
-
-  const pN=map.latLngToLayerPoint(nw);
-  const pS=map.latLngToLayerPoint(sw);
-  const pW=map.latLngToLayerPoint(nw);
-  const pE=map.latLngToLayerPoint(ne);
-
+  const nw=bounds.getNorthWest(), sw=bounds.getSouthWest(), ne=bounds.getNorthEast();
+  const pN=map.latLngToLayerPoint(nw), pS=map.latLngToLayerPoint(sw), pW=map.latLngToLayerPoint(nw), pE=map.latLngToLayerPoint(ne);
   const curH=Math.abs(pN.y - pS.y);
   const curW=Math.abs(pE.x - pW.x);
 
-  // 3) Zoom in so height exactly matches our target (ignore sides)
+  // 3) Zoom by height, then apply slight global deflate
   if(curH>0 && targetH>0){
     const factor=targetH/curH;
-    if(factor>1.0001){ zoomByFactor(factor); }
+    const applied=(factor>1?factor:1)*HEIGHT_FIT_SAFETY; // tiny shrink for breathing room
+    if(Math.abs(applied-1)>1e-3){ zoomByFactor(applied); }
   }
 
-  // 4) Safety: make sure width still fits inside left/right margins
+  // 4) Safety: ensure width still fits
   const maxW = Math.max(1, size.x - (m.left+m.right));
   const pE2=map.latLngToLayerPoint(ne), pW2=map.latLngToLayerPoint(nw);
   const w2=Math.abs(pE2.x - pW2.x);
@@ -539,7 +532,7 @@ function updateMap(){
     });
   });
 
-  // routes (ALL trips)
+  // routes
   trips.forEach(t=>{
     if(t.cities.length>1){
       const pts=t.cities.map(c=>[c.lat,c.lon]);
@@ -584,7 +577,7 @@ function totalTripMiles(trip){
 function formatMiles(m){ return m>=1000 ? `${(m/1000).toFixed(1)}k miles` : `${Math.round(m/10)*10} miles`; }
 function roundRect(ctx,x,y,w,h,r){ const rr=Math.min(r, w/2, h/2); ctx.beginPath(); ctx.moveTo(x+rr,y); ctx.arcTo(x+w,y,x+w,y+h,rr); ctx.arcTo(x+w,y+h,x,y+h,rr); ctx.arcTo(x,y+h,x,y,rr); ctx.arcTo(x,y,x+w,y,rr); ctx.closePath(); }
 
-/* Snapshot the live Leaflet map at poster-card size with the same height-first fit */
+/* Poster snapshot with same height-first logic */
 async function snapshotMapForPoster(){
   const mapEl=document.getElementById('map');
   const original = { width: mapEl.style.width, height: mapEl.style.height, transform: mapEl.style.transform };
