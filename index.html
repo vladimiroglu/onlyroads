@@ -204,7 +204,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.078';
+const VERSION = '0.079';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -482,7 +482,7 @@ function initMap(){
       autoFitUSHeight();   // auto center & height-fit after data loads
       refreshAllStateStyles(); updateMap();
 
-      /* Keep fine-scale applied whenever Leaflet updates its transform */
+      /* Keep fine-scale & centering applied whenever Leaflet updates its transform */
       map.on('move zoom viewreset moveend zoomend', applyFineScale);
     });
 }
@@ -496,14 +496,29 @@ function _usPixelHeightAtZoom(bounds, z) {
   return Math.abs(ne.y - sw.y);
 }
 
-/* Append scale() to Leaflet's translate3d(...) so centering is preserved */
+/* Append scale() AND translateX() to Leaflet's translate3d(...) so centering is preserved */
 function applyFineScale() {
-  const pane = map.getPanes()?.mapPane;
-  if (!pane) return;
-  const base = pane.style.transform || '';                  // e.g. "translate3d(x,y,0)"
-  const cleaned = base.replace(/\s+scale\([^)]+\)/, '');    // remove our previous scale()
+  const pane = map?.getPanes()?.mapPane;
+  if (!pane || !conusBounds) return;
+
+  const base = pane.style.transform || '';                   // e.g. "translate3d(x, y, 0)"
+  const cleaned = base
+      .replace(/\s+scale\([^)]+\)/, '')                    // remove any previous scale
+      .replace(/\s+translateX\([^)]+\)/, '');              // remove any previous translateX we added
+
+  // compute horizontal center offset
+  const size = map.getSize();                              // map container size
+  const z = map.getZoom();                                 // current integer zoom
+  const ne = conusBounds.getNorthEast();
+  const sw = conusBounds.getSouthWest();
+  const pNE = map.project(ne, z);
+  const pSW = map.project(sw, z);
+  const usWidth = Math.abs(pNE.x - pSW.x);                 // width of the US in pixels at this zoom
+  const scaledWidth = usWidth * MAP_FINE_SCALE;
+  const dx = (size.x - scaledWidth) / 2;                   // center offset
+
   pane.style.transformOrigin = 'center center';
-  pane.style.transform = `${cleaned} scale(${MAP_FINE_SCALE})`;
+  pane.style.transform = `${cleaned} translateX(${dx}px) scale(${MAP_FINE_SCALE})`;
 }
 
 function autoFitUSHeight() {
@@ -523,8 +538,6 @@ function autoFitUSHeight() {
   const z = zMin;
   const center = conusBounds.getCenter();
   map.setView(center, z, { animate:false });
-
-  // after Leaflet renders at nearest integer zoom, append our fine-scale
   requestAnimationFrame(applyFineScale);
 }
 window.addEventListener('resize', ()=>autoFitUSHeight(), {passive:true});
@@ -744,5 +757,3 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
-
-
