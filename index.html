@@ -85,8 +85,8 @@ body.exporting #fabAddTrip{visibility:hidden}
 .legend .item.is-active{border-color:#3a58a2;color:#e8f0ff;box-shadow:0 0 0 2px #3a58a215 inset}
 .legend .chip{width:14px;height:14px;border-radius:50%;border:1px solid #fff6}
 
-/* Menu */
-.menu{position:absolute;right:12px;top:56px;z-index:11000;background:#0f2550;border:1px solid #223a6c;border-radius:12px;min-width:230px;display:none;box-shadow:0 12px 30px rgba(0,0,0,.35);overflow:hidden}
+/* Menu (anchored to kebab — fixed, like prod) */
+.menu{position:fixed; z-index:11000;background:#0f2550;border:1px solid #223a6c;border-radius:12px;min-width:230px;display:none;box-shadow:0 12px 30px rgba(0,0,0,.35);overflow:hidden}
 .menu.show{display:block}
 .mi{padding:10px 14px;border-bottom:1px solid #193566;cursor:pointer;font-size:14.5px;letter-spacing:.2px}
 .mi:last-child{border-bottom:none}
@@ -98,6 +98,16 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 /* Visual effects (only marker glow remains) */
 .or-marker-glow{ filter:url(#or-soft-glow); }
+
+/* Color picker popover (restored styles) */
+.cp-pop{position:absolute;z-index:12000;background:#0f2550;border:1px solid #223a6c;border-radius:12px;padding:10px;box-shadow:0 12px 30px rgba(0,0,0,.35);width:min(260px, 92vw)}
+.cp-row{display:flex;flex-wrap:wrap;gap:10px}
+.cp-swatch{width:28px;height:28px;border-radius:8px;border:1px solid #ffffff55;cursor:pointer}
+.cp-actions{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
+.cp-chip{display:inline-grid;grid-auto-flow:column;gap:8px;align-items:center;background:#1a2f5a;border:1px solid var(--panelBorder);color:#fff;border-radius:10px;padding:8px 10px;cursor:pointer}
+.cp-chip input[type="color"]{appearance:none;border:none;background:transparent;width:0;height:0;padding:0;margin:0}
+.cp-btn{background:#1a2f5a;border:1px solid var(--panelBorder);color:#fff;border-radius:10px;padding:8px 12px;cursor:pointer}
+.cp-btn:hover,.cp-chip:hover{background:#21366a}
 
 @media (max-width: 640px){
   #map{aspect-ratio: 21/10;}
@@ -168,7 +178,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.095';
+const VERSION = '0.096';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -244,12 +254,32 @@ const kebabBtn=document.getElementById('kebabBtn'); const menu=document.getEleme
   window.addEventListener('scroll',()=>{ if(!ticking){ requestAnimationFrame(()=>{ onScrollFrame(); ticking=false;}); ticking=true;}},{passive:true});
   window.OnlyRoadsHeader={forceShow(on=true){ headerEl.classList.toggle('force-show',!!on); if(on) headerEl.classList.remove('is-hidden'); }, show, hide};
 })();
+
+/* Anchored menu positioning (restored) */
+function positionMenu(){
+  if(!menu.classList.contains('show')) return;
+  const r=kebabBtn.getBoundingClientRect();
+  const margin=8;
+  const left=Math.min(
+    Math.max(8, r.right - menu.offsetWidth),
+    window.innerWidth - menu.offsetWidth - 8
+  );
+  const top=Math.min(
+    r.bottom + margin,
+    window.innerHeight - menu.offsetHeight - 8
+  );
+  menu.style.left = `${left}px`;
+  menu.style.top  = `${top}px`;
+}
 kebabBtn.addEventListener('click',(e)=>{
   e.stopPropagation();
   const willShow=!menu.classList.contains('show');
-  menu.classList.toggle('show');
+  if(willShow){ menu.classList.add('show'); positionMenu(); }
+  else { menu.classList.remove('show'); }
   window.OnlyRoadsHeader?.forceShow(willShow);
 });
+window.addEventListener('resize', positionMenu, {passive:true});
+window.addEventListener('scroll', positionMenu, {passive:true});
 document.addEventListener('click',e=>{
   const outside=!menu.contains(e.target)&&e.target!==kebabBtn;
   if(outside&&menu.classList.contains('show')){ menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false); }
@@ -385,7 +415,14 @@ input.addEventListener('input', ()=>{
         return {label:`${cityName}, ${ab}`, name:cityName, stateFull, stateAbbr:ab, lat:+row.lat, lon:+row.lon};
       }).filter(Boolean);
       if(!items.length){ac.classList.remove('show');return;}
-      items.forEach(it=>{const d=document.createElement('div'); d.className='ac-item'; d.textContent=it.label; d.onclick=()=>{ac.classList.remove('show');input.value='';addCity(it);}; ac.appendChild(d);});
+      items.forEach(it=>{
+        const d=document.createElement('div'); d.className='ac-item'; d.textContent=it.label;
+        /* Use pointerdown so selection works reliably on iOS/Android before blur hides the list */
+        d.addEventListener('pointerdown',(ev)=>{ ev.preventDefault(); ac.classList.remove('show'); input.value=''; addCity(it); });
+        /* Fallback click (desktop) */
+        d.addEventListener('click',()=>{ ac.classList.remove('show'); input.value=''; addCity(it); });
+        ac.appendChild(d);
+      });
       ac.classList.add('show'); resizeAutocompleteForViewport(); ensureCityBoxVisible(true);
     }).catch(()=>{}),200);
 });
@@ -416,11 +453,10 @@ function renderList(){
   });
 }
 
-/* ===== Legend helpers (restored) ===== */
+/* ===== Legend helpers ===== */
 function renderLegend(){
   legendEl.innerHTML='';
   if(!trips.length){ legendEl.classList.remove('show'); return; }
-
   trips.forEach(t=>{
     const btn=document.createElement('button');
     btn.className='item'; btn.type='button';
@@ -431,7 +467,6 @@ function renderLegend(){
     btn.addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); activateTripById(t.id); }});
     legendEl.appendChild(btn);
   });
-
   legendEl.classList.add('show');
   highlightLegendActive();
 }
@@ -444,15 +479,8 @@ function highlightLegendActive(){
 function activateTripById(id){
   if(activeTripId === id) return;
   activeTripId = id;
-
-  // sync select
   for(const opt of tripSelect.options){ opt.selected = (+opt.value === id); }
-
-  renderList();
-  updateMap();
-  updateEmptyState();
-  highlightLegendActive();
-  updateShareURL();
+  renderList(); updateMap(); updateEmptyState(); highlightLegendActive(); updateShareURL();
 }
 
 /* ===== Map / drawing ===== */
@@ -464,10 +492,7 @@ function initMap(){
     zoomControl:false,attributionControl:false,
     dragging:false,scrollWheelZoom:false,doubleClickZoom:false,
     boxZoom:false,keyboard:false,touchZoom:false,worldCopyJump:false,
-
-    /* fractional zoom so we aren't stuck with only two sizes */
-    zoomSnap:0,
-    zoomDelta:0.25
+    zoomSnap:0, zoomDelta:0.25
   });
   map.createPane('statesPane');
   map.createPane('routesPane');
@@ -648,34 +673,16 @@ async function buildPosterCanvas(mapShot){
   const ctx=canvas.getContext('2d');
   ctx.fillStyle=POSTER_BG; ctx.fillRect(0,0,POSTER_W,POSTER_H);
 
-  const unlocked = unlockedStates.size || 0;
-
-  const leftPad=54;
-  const topPad=POSTER_INSET_TOP_SAFE - 86;
-  ctx.fillStyle='#eaf2ff'; ctx.textBaseline='alphabetic';
-
-  ctx.font=posterFonts.labelBig;
-  ctx.fillText('STATES', leftPad, topPad);
-  ctx.fillText('UNLOCKED', leftPad, topPad + 64 + 8);
-
-  ctx.font=posterFonts.bigNum;
-  const bigNum=String(unlocked);
-  const bnW = ctx.measureText(bigNum).width;
-  const rightCountX = POSTER_W - (leftPad + 280);
-  const baseY = topPad + 64 + 8;
-  ctx.fillText(bigNum, rightCountX, baseY+78);
-
-  ctx.font=posterFonts.labelBig;
-  ctx.fillText('/ 50', rightCountX + bnW + 18, baseY+50);
-
   const {canvas:mapCanvas, cardX, cardY, cardW, cardH} = mapShot;
 
-  ctx.drawImage(mapCanvas,
-    cardX + (cardW - Math.min(cardW, mapCanvas.width))/2,
-    cardY + (cardH - Math.min(cardH, mapCanvas.height))/2,
-    Math.min(cardW, mapCanvas.width),
-    Math.min(cardH, mapCanvas.height)
-  );
+  const innerW=cardW, innerH=cardH;
+  const mapRatio=mapCanvas.width/mapCanvas.height;
+  let drawW=innerW, drawH=innerW/mapRatio;
+  if(drawH>innerH){ drawH=innerH; drawW=innerH*mapRatio; }
+  drawW*=POSTER_MAP_SCALE; drawH*=POSTER_MAP_SCALE;
+  const drawX=cardX + (cardW-drawW)/2 + POSTER_MAP_INSET_X;
+  const drawY=cardY + (cardH-drawH)/2 + POSTER_MAP_INSET_Y;
+  ctx.drawImage(mapCanvas, drawX, drawY, drawW, drawH);
 
   return canvas;
 }
