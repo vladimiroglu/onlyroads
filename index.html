@@ -93,6 +93,16 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 /* Visual effects (only marker glow remains) */
 .or-marker-glow{ filter:url(#or-soft-glow); }
 
+/* 🔙 Restored: Color picker popover styles */
+.cp-pop{position:absolute;z-index:12000;background:#0f2550;border:1px solid #223a6c;border-radius:12px;padding:10px;box-shadow:0 12px 30px rgba(0,0,0,.35);width:min(260px, 92vw)}
+.cp-row{display:flex;flex-wrap:wrap;gap:10px}
+.cp-swatch{width:28px;height:28px;border-radius:8px;border:1px solid #ffffff55;cursor:pointer}
+.cp-actions{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
+.cp-chip{display:inline-grid;grid-auto-flow:column;gap:8px;align-items:center;background:#1a2f5a;border:1px solid var(--panelBorder);color:#fff;border-radius:10px;padding:8px 10px;cursor:pointer}
+.cp-chip input[type="color"]{appearance:none;border:none;background:transparent;width:0;height:0;padding:0;margin:0}
+.cp-btn{background:#1a2f5a;border:1px solid var(--panelBorder);color:#fff;border-radius:10px;padding:8px 12px;cursor:pointer}
+.cp-btn:hover,.cp-chip:hover{background:#21366a}
+
 @media (max-width: 640px){
   #map{aspect-ratio: 21/10;}
 }
@@ -162,7 +172,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.108';
+const VERSION = '0.109';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -183,7 +193,7 @@ const CURVE_GAIN=1.25;
 
 /* Height-first fit config */
 const MAP_MARGINS = { top:5, right:5, bottom:5, left:5 };
-const POSTER_MARGINS = { top:16, right:18, bottom:16, left:18 }; /* unused now, retained for future poster work */
+const POSTER_MARGINS = { top:16, right:18, bottom:16, left:18 }; /* unused now */
 const HEIGHT_FIT_SAFETY = 1;
 
 const mapCounter=document.getElementById('mapCounter');
@@ -246,7 +256,7 @@ document.addEventListener('click',e=>{
   if(outside&&menu.classList.contains('show')){ menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false); }
 });
 
-/* (Placeholder) Save image — intentionally no-op per v0.108 */
+/* (Placeholder) Save image — intentionally no-op per v0.109 */
 
 /* Share & feedback */
 document.getElementById('miShare').addEventListener('click', async ()=>{
@@ -330,7 +340,12 @@ document.getElementById('deleteTripBtn').addEventListener('click',()=>{
     b.addEventListener('click', ()=>applyTripColor(hex,true));
     cpSwatches.appendChild(b);
   });
-  function positionPopover(){ const r=tripColorBtn.getBoundingClientRect(); cp.style.top=`${r.bottom+window.scrollY+8}px`; const maxLeft=window.scrollX+document.documentElement.clientWidth-cp.offsetWidth-8; cp.style.left=`${Math.min(r.left+window.scrollX,maxLeft)}px`; }
+  function positionPopover(){
+    const r=tripColorBtn.getBoundingClientRect();
+    cp.style.top=`${r.bottom+window.scrollY+8}px`;
+    const maxLeft=window.scrollX+document.documentElement.clientWidth-cp.offsetWidth-8;
+    cp.style.left=`${Math.min(r.left+window.scrollX,maxLeft)}px`;
+  }
   function openPopover(){ if(cp.hidden){ cp.hidden=false; requestAnimationFrame(()=>{ positionPopover(); }); } }
   function closePopover(){ cp.hidden=true; }
   tripColorBtn.addEventListener('click',(e)=>{ e.stopPropagation(); openPopover(); });
@@ -339,7 +354,14 @@ document.getElementById('deleteTripBtn').addEventListener('click',()=>{
   document.addEventListener('click',(e)=>{ if(!cp.hidden && !cp.contains(e.target) && e.target!==tripColorBtn) closePopover(); });
   document.addEventListener('keydown', (e)=>{ if(!cp.hidden && e.key==='Escape') closePopover();});
   window.addEventListener('resize', ()=>{ if(!cp.hidden) positionPopover(); });
-  window.applyTripColor=function(hex,persist){ const t=getActiveTrip(); if(!t) return; t.color=hex; tripColorChip.style.background=hex; renderLegend(); updateMap(); if(persist) updateShareURL(); };
+  window.applyTripColor=function(hex,persist){
+    const t=getActiveTrip(); if(!t) return;
+    t.color=hex;
+    tripColorChip.style.background=hex;
+    renderLegend();
+    updateMap();
+    if(persist) updateShareURL();
+  };
 })();
 
 /* ===== Autocomplete (delegated, capture-phase) ===== */
