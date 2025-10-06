@@ -168,7 +168,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.094';
+const VERSION = '0.095';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -187,12 +187,12 @@ const PALETTE=['#45a3ff','#ff6b6b','#ffd166','#06d6a0','#c792ea','#ff9f1c','#00b
 const DOT_RADIUS=3.5, DOT_WEIGHT=1, RED='#ff0000', GREEN='#30e6b6';
 const CURVE_GAIN=1.25;
 
-/* Height-first fit config (your preferred values) */
+/* Height-first fit config */
 const MAP_MARGINS = { top:5, right:5, bottom:5, left:5 };
-const POSTER_MARGINS = { top:16, right:18, bottom:16, left:18 }; // poster left as-is for now
+const POSTER_MARGINS = { top:16, right:18, bottom:16, left:18 }; // poster later
 const HEIGHT_FIT_SAFETY = 1;
 
-/* Poster map knobs (poster revamp later) */
+/* Poster knobs (kept for now) */
 const POSTER_W = 1080, POSTER_H = 1920;
 const POSTER_BG = '#0b1c3a';
 const POSTER_INSET_TOP_SAFE = 250;
@@ -306,24 +306,18 @@ function createTripFlow(){
     const raw=prompt('Name your new trip:', '');
     if(raw===null) return;
     const name=(raw||'').trim();
-    addTrip(name); // robust add (handles empty name inside)
+    addTrip(name);
   }catch(e){
     console.error('createTripFlow error:', e);
-    toast('Could not create trip');
+    toast('Could not create new trip');
   }
 }
 function addTrip(name){
   const id=++tripCounter;
-  const t={
-    id,
-    name: name || `Trip ${id}`,
-    color: PALETTE[(id-1)%PALETTE.length],
-    cities:[]
-  };
+  const t={ id, name: name || `Trip ${id}`, color: PALETTE[(id-1)%PALETTE.length], cities:[] };
   trips.push(t);
   activeTripId=id;
 
-  // Refresh UI deterministically
   refreshTripUI();
   renderList();
   recomputeUnlockedFromCities();
@@ -422,6 +416,45 @@ function renderList(){
   });
 }
 
+/* ===== Legend helpers (restored) ===== */
+function renderLegend(){
+  legendEl.innerHTML='';
+  if(!trips.length){ legendEl.classList.remove('show'); return; }
+
+  trips.forEach(t=>{
+    const btn=document.createElement('button');
+    btn.className='item'; btn.type='button';
+    btn.setAttribute('data-id', t.id);
+    btn.setAttribute('aria-label', `Switch to ${t.name}`);
+    btn.innerHTML=`<span class="chip" style="background:${t.color}"></span><span>${t.name}</span>`;
+    btn.addEventListener('click', ()=> activateTripById(t.id));
+    btn.addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); activateTripById(t.id); }});
+    legendEl.appendChild(btn);
+  });
+
+  legendEl.classList.add('show');
+  highlightLegendActive();
+}
+function highlightLegendActive(){
+  [...legendEl.children].forEach(el=>{
+    const isActive = +el.getAttribute('data-id') === activeTripId;
+    el.classList.toggle('is-active', isActive);
+  });
+}
+function activateTripById(id){
+  if(activeTripId === id) return;
+  activeTripId = id;
+
+  // sync select
+  for(const opt of tripSelect.options){ opt.selected = (+opt.value === id); }
+
+  renderList();
+  updateMap();
+  updateEmptyState();
+  highlightLegendActive();
+  updateShareURL();
+}
+
 /* ===== Map / drawing ===== */
 let map, statesLayer, stateLayerByName={}, conusBounds=null;
 let markerById={}, routeLines={}, unlockedStates=new Set();
@@ -467,27 +500,23 @@ function setZoomByFactor(f){ if(f>0 && f!==1){ map.setZoom(map.getZoom()+Math.lo
 function fitByHeight(bounds, m){
   if(!bounds || !map) return;
 
-  // 1) Standard fit (ensures everything visible and centered)
   map.fitBounds(bounds,{
     paddingTopLeft:[m.left,m.top],
     paddingBottomRight:[m.right,m.bottom],
     animate:false
   });
 
-  // 2) Measure vertical span in px
   const size=map.getSize();
   const targetH = Math.max(1, size.y - (m.top+m.bottom));
   const nw=bounds.getNorthWest(), sw=bounds.getSouthWest(), ne=bounds.getNorthEast();
   const pN=map.latLngToLayerPoint(nw), pS=map.latLngToLayerPoint(sw), pW=map.latLngToLayerPoint(nw), pE=map.latLngToLayerPoint(ne);
   const curH=Math.abs(pN.y - pS.y);
 
-  // 3) Zoom by exact height (ignore sides), with your safety = 1
   if(curH>0 && targetH>0){
-    const factor=(targetH/curH)*HEIGHT_FIT_SAFETY; // = 1
+    const factor=(targetH/curH)*HEIGHT_FIT_SAFETY;
     setZoomByFactor(factor);
   }
 
-  // 4) Safety: make sure width still fits inside margins
   const maxW = Math.max(1, size.x - (m.left+m.right));
   const pE2=map.latLngToLayerPoint(ne), pW2=map.latLngToLayerPoint(nw);
   const w2=Math.abs(pE2.x - pW2.x);
@@ -547,19 +576,16 @@ function isClosed(points){ if(points.length<3) return false; const a=points[0], 
 
 function updateMap(){
   if(!map) return;
-  // clear
   for(const id in markerById){ if(markerById[id]) map.removeLayer(markerById[id]); }
   markerById={};
   Object.values(routeLines).forEach(l=>{ if(l) map.removeLayer(l); }); routeLines={};
 
-  // markers
   trips.forEach(t=>{
     t.cities.forEach(c=>{
       markerById[c.id]=L.circleMarker([c.lat,c.lon], markerStyle(c.id===selectedId)).addTo(map);
     });
   });
 
-  // routes (ALL trips)
   trips.forEach(t=>{
     if(t.cities.length>1){
       const pts=t.cities.map(c=>[c.lat,c.lon]);
@@ -589,22 +615,7 @@ function updateShareURL(){
   const url=new URL(location.href); url.hash='s='+b64; history.replaceState(null,'',url.toString()); return url.toString();
 }
 
-/* ===== Poster helpers (poster will be reworked later) ===== */
-function haversineMiles(lat1,lon1,lat2,lon2){
-  const R=3958.7613, toRad=d=>d*Math.PI/180;
-  const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
-  const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
-  return 2*R*Math.asin(Math.sqrt(a));
-}
-function totalTripMiles(trip){
-  if(!trip || trip.cities.length<2) return 0;
-  let miles=0; for(let i=0;i<trip.cities.length-1;i++){ const a=trip.cities[i], b=trip.cities[i+1]; miles += haversineMiles(a.lat,a.lon,b.lat,b.lon); }
-  return miles;
-}
-function formatMiles(m){ return m>=1000 ? `${(m/1000).toFixed(1)}k miles` : `${Math.round(m/10)*10} miles`; }
-function roundRect(ctx,x,y,w,h,r){ const rr=Math.min(r, w/2, h/2); ctx.beginPath(); ctx.moveTo(x+rr,y); ctx.arcTo(x+w,y,x+w,y+h,rr); ctx.arcTo(x+w,y+h,x,y+h,rr); ctx.arcTo(x,y+h,x,y,rr); ctx.arcTo(x,y,x+w,y,rr); ctx.closePath(); }
-
-/* Poster snapshot (kept functional) */
+/* ===== Poster snapshot/build (unchanged for now) ===== */
 async function snapshotMapForPoster(){
   const mapEl=document.getElementById('map');
   const original = { width: mapEl.style.width, height: mapEl.style.height, transform: mapEl.style.transform };
@@ -624,7 +635,6 @@ async function snapshotMapForPoster(){
 
   const canvas = await html2canvas(mapEl, {useCORS:true, backgroundColor:null, scale:2});
 
-  // Restore
   mapEl.style.width = original.width;
   mapEl.style.height = original.height;
   mapEl.style.transform = original.transform;
@@ -660,51 +670,12 @@ async function buildPosterCanvas(mapShot){
 
   const {canvas:mapCanvas, cardX, cardY, cardW, cardH} = mapShot;
 
-  ctx.save();
-  roundRect(ctx, cardX, cardY, cardW, cardH, 22);
-  ctx.shadowColor='rgba(0,0,0,0.45)'; ctx.shadowBlur=38; ctx.shadowOffsetY=22;
-  ctx.fillStyle='rgba(0,0,0,0.18)'; ctx.fill();
-  ctx.restore();
-
-  const innerW=cardW, innerH=cardH;
-  const mapRatio=mapCanvas.width/mapCanvas.height;
-  let drawW=innerW, drawH=innerW/mapRatio;
-  if(drawH>innerH){ drawH=innerH; drawW=innerH*mapRatio; }
-  drawW*=POSTER_MAP_SCALE; drawH*=POSTER_MAP_SCALE;
-  const drawX=cardX + (cardW-drawW)/2 + POSTER_MAP_INSET_X;
-  const drawY=cardY + (cardH-drawH)/2 + POSTER_MAP_INSET_Y;
-  ctx.drawImage(mapCanvas, drawX, drawY, drawW, drawH);
-
-  const tripsTitleY = cardY + cardH + 42;
-  ctx.fillStyle='#eaf2ff';
-  ctx.font=posterFonts.tripsTitle;
-  ctx.fillText('Highlighted  road trips:', leftPad, tripsTitleY);
-
-  const tripSummaries=trips.map(t=>({id:t.id,color:t.color,name:t.name,miles:totalTripMiles(t)})).sort((a,b)=>b.miles-a.miles);
-  const bulletGap=54, colorBarW=40, colorBarH=10;
-  const itemsYStart=tripsTitleY+58;
-  ctx.font=posterFonts.text;
-
-  tripSummaries.forEach((row,idx)=>{
-    const y=itemsYStart+idx*bulletGap;
-    ctx.fillStyle=row.color; ctx.fillRect(leftPad,y+18,colorBarW,colorBarH);
-    ctx.fillStyle='#e6ecff'; ctx.fillText(`${formatMiles(row.miles)}: ${row.name}`, leftPad+colorBarW+16, y+8);
-  });
-
-  ctx.save();
-  ctx.translate(POSTER_W-26, POSTER_H-120);
-  ctx.rotate(-Math.PI/2);
-  ctx.fillStyle=WATERMARK_COLOR;
-  ctx.font='900 120px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
-  ctx.fillText('ONLYROADS',0,0);
-  ctx.restore();
-
-  ctx.save();
-  ctx.textAlign='center';
-  ctx.fillStyle='rgba(255,255,255,0.55)';
-  ctx.font=posterFonts.version;
-  ctx.fillText(`OnlyRoads Beta v${VERSION}`, POSTER_W/2, POSTER_H - 18);
-  ctx.restore();
+  ctx.drawImage(mapCanvas,
+    cardX + (cardW - Math.min(cardW, mapCanvas.width))/2,
+    cardY + (cardH - Math.min(cardH, mapCanvas.height))/2,
+    Math.min(cardW, mapCanvas.width),
+    Math.min(cardH, mapCanvas.height)
+  );
 
   return canvas;
 }
