@@ -17,6 +17,7 @@
   --ink:#e6ecff; --ink-dim:#c9d6ff;
   --panel:#0e2349; --panelBorder:#2a3c67;
   --accent:#45a3ff;
+  --watermark:#ffffff17;
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
@@ -40,16 +41,15 @@ header.is-hidden{transform:translateY(-100%)} header.force-show{transform:transl
 #fabAddTrip{position:absolute;right:12px;bottom:12px;z-index:2;width:46px;height:46px;border-radius:14px;border:1px solid #284079;background:#16306a;color:#fff;font-size:24px;font-weight:700;display:grid;place-items:center;cursor:pointer}
 #fabAddTrip:hover{background:#1a3a80}
 
-/* Hide badges while exporting poster + neutralize any fine-scale */
+/* Hide badges while exporting poster */
 body.exporting #mapCounter,
 body.exporting #fabAddTrip{visibility:hidden}
-body.exporting #map .leaflet-map-pane{ transform:none !important; }
 
 /* Clickable hint */
 #belowHint{display:none;margin:8px 2px 12px;padding:16px 14px;border:2px dotted var(--panelBorder);border-radius:12px;background:transparent;color:var(--ink-dim);text-align:center;font-size:14px;letter-spacing:.2px;cursor:pointer;user-select:none}
 #belowHint:active{transform:scale(.99)}
 
-/* Trip bar — name + 3 squares on right */
+/* Trip bar */
 .tripbar{display:none;align-items:center;gap:10px;margin:8px 0;flex-wrap:nowrap}
 .tripbar.show{display:flex}
 .tripbar .tripname{flex:1;min-width:0;background:var(--panel);border:1px solid var(--panelBorder);color:var(--ink);border-radius:12px;padding:10px 12px;font-size:15px;height:42px;line-height:20px}
@@ -77,7 +77,7 @@ body.exporting #map .leaflet-map-pane{ transform:none !important; }
 .li.li-selected{background:#224080}
 .empty-list-hint{position:absolute;inset:0;display:none;place-items:center;color:#c9d6ff;opacity:.9;font-size:13px}
 
-/* Legend (click-to-switch) */
+/* Legend */
 .legend{display:none;flex-wrap:wrap;gap:10px;margin:6px 2px 0}
 .legend.show{display:flex}
 .legend .item{display:flex;align-items:center;gap:8px;background:#0f2550;border:1px solid #223a6c;padding:6px 10px;border-radius:12px;font-size:13px;color:var(--ink-dim);cursor:pointer;outline:none}
@@ -85,7 +85,7 @@ body.exporting #map .leaflet-map-pane{ transform:none !important; }
 .legend .item.is-active{border-color:#3a58a2;color:#e8f0ff;box-shadow:0 0 0 2px #3a58a215 inset}
 .legend .chip{width:14px;height:14px;border-radius:50%;border:1px solid #fff6}
 
-/* Menu (anchored to kebab) */
+/* Menu (anchored to kebab — fixed) */
 .menu{position:fixed; z-index:11000;background:#0f2550;border:1px solid #223a6c;border-radius:12px;min-width:230px;display:none;box-shadow:0 12px 30px rgba(0,0,0,.35);overflow:hidden}
 .menu.show{display:block}
 .mi{padding:10px 14px;border-bottom:1px solid #193566;cursor:pointer;font-size:14.5px;letter-spacing:.2px}
@@ -96,56 +96,31 @@ body.exporting #map .leaflet-map-pane{ transform:none !important; }
 .toast.show{display:block}
 footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
-/* Visual effects */
-.or-states-glow path{
-  filter:
-    drop-shadow(0 0 2px rgba(255,255,255,.65))
-    drop-shadow(0 0 6px rgba(255,255,255,.35))
-    drop-shadow(0 0 12px rgba(255,255,255,.22));
-}
+/* Visual effects (only marker glow remains) */
 .or-marker-glow{ filter:url(#or-soft-glow); }
-.or-state-inner{ filter:url(#or-inner-shadow); }
 
-/* Desktop readability tweaks */
-@media (min-width:900px){
-  .brand{
-    letter-spacing:1.3px;
-    font-stretch:condensed;
-    transform:scaleX(.78);
-    transform-origin:left center;
-    -webkit-text-stroke:1.1px rgba(230,236,255,.42);
-    text-shadow:0 1px 0 rgba(0,0,0,.25);
-  }
-  #mapCounter{
-    font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-    font-weight:900;
-    font-size:16px;
-    letter-spacing:.35px;
-    padding:5px 9px;
-    transform:scaleX(.92);
-    transform-origin:left center;
-  }
+/* Color picker popover */
+.cp-pop{position:absolute;z-index:12000;background:#0f2550;border:1px solid #223a6c;border-radius:12px;padding:10px;box-shadow:0 12px 30px rgba(0,0,0,.35);width:min(260px, 92vw)}
+.cp-row{display:flex;flex-wrap:wrap;gap:10px}
+.cp-swatch{width:28px;height:28px;border-radius:8px;border:1px solid #ffffff55;cursor:pointer}
+.cp-actions{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
+.cp-chip{display:inline-grid;grid-auto-flow:column;gap:8px;align-items:center;background:#1a2f5a;border:1px solid var(--panelBorder);color:#fff;border-radius:10px;padding:8px 10px;cursor:pointer}
+.cp-chip input[type="color"]{appearance:none;border:none;background:transparent;width:0;height:0;padding:0;margin:0}
+.cp-btn{background:#1a2f5a;border:1px solid var(--panelBorder);color:#fff;border-radius:10px;padding:8px 12px;cursor:pointer}
+.cp-btn:hover,.cp-chip:hover{background:#21366a}
+
+@media (max-width: 640px){
+  #map{aspect-ratio: 21/10;}
 }
 </style>
 </head>
 <body>
-<!-- SVG filters -->
+<!-- SVG filters: keep only soft glow for markers -->
 <svg width="0" height="0" style="position:absolute;left:-9999px;top:-9999px" aria-hidden="true" focusable="false">
   <defs>
     <filter id="or-soft-glow" x="-50%" y="-50%" width="200%" height="200%">
       <feGaussianBlur stdDeviation="2.8" result="blur"/>
       <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-    <filter id="or-inner-shadow" x="-50%" y="-50%" width="200%" height="200%">
-      <feOffset dx="0" dy="1" in="SourceAlpha" result="off"/>
-      <feGaussianBlur in="off" stdDeviation="2.5" result="blur"/>
-      <feColorMatrix in="blur" type="matrix"
-        values="0 0 0 0 0
-                0 0 0 0 0
-                0 0 0 0 0
-                0 0 0 .55 0" result="shadow"/>
-      <feComposite in="shadow" in2="SourceAlpha" operator="in" result="inner"/>
-      <feComposite in="SourceGraphic" in2="inner" operator="over"/>
     </filter>
   </defs>
 </svg>
@@ -203,7 +178,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.081';
+const VERSION = '0.098';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -222,11 +197,27 @@ const PALETTE=['#45a3ff','#ff6b6b','#ffd166','#06d6a0','#c792ea','#ff9f1c','#00b
 const DOT_RADIUS=3.5, DOT_WEIGHT=1, RED='#ff0000', GREEN='#30e6b6';
 const CURVE_GAIN=1.25;
 
-/* Poster defaults */
+/* Height-first fit config */
+const MAP_MARGINS = { top:5, right:5, bottom:5, left:5 };
+const POSTER_MARGINS = { top:16, right:18, bottom:16, left:18 };
+const HEIGHT_FIT_SAFETY = 1;
+
+/* Poster knobs (kept for now) */
 const POSTER_W = 1080, POSTER_H = 1920;
 const POSTER_BG = '#0b1c3a';
-const CARD_BG = '#0f2550';
+const POSTER_INSET_TOP_SAFE = 250;
+const POSTER_MAP_SCALE = 1.00;
+const POSTER_MAP_INSET_X = 0, POSTER_MAP_INSET_Y = 0;
+
 const WATERMARK_TEXT = 'ONLYROADS';
+const WATERMARK_COLOR = 'rgba(255,255,255,0.1)';
+const posterFonts = {
+  bigNum: '900 168px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif',
+  labelBig: '900 64px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif',
+  tripsTitle: '900 54px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif',
+  text: '500 36px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif',
+  version: '500 28px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif'
+};
 
 const mapCounter=document.getElementById('mapCounter');
 const belowHint=document.getElementById('belowHint');
@@ -244,14 +235,15 @@ const legendEl=document.getElementById('legend');
 const toastEl=document.getElementById('toast'); let toastTimer=null;
 function toast(t){toastEl.textContent=t;toastEl.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>toastEl.classList.remove('show'),1600);}
 
+/* Color picker els */
+const cp=document.getElementById('colorPicker'), cpSwatches=document.getElementById('cpSwatches'), cpCustom=document.getElementById('cpCustom'), cpClose=document.getElementById('cpClose');
+
 /* ===== App state ===== */
 let trips=[],activeTripId=null,tripCounter=0,cidCounter=0,selectedId=null;
 function getActiveTrip(){return trips.find(t=>t.id===activeTripId);}
 
-/* ===== Header menu ===== */
+/* ===== Header/menu ===== */
 const kebabBtn=document.getElementById('kebabBtn'); const menu=document.getElementById('menu');
-
-/* Header reveal */
 (function(){
   const headerEl=document.querySelector('header'); if(!headerEl) return;
   let lastY=window.scrollY,ticking=false,hidden=false;
@@ -263,19 +255,13 @@ const kebabBtn=document.getElementById('kebabBtn'); const menu=document.getEleme
   window.OnlyRoadsHeader={forceShow(on=true){ headerEl.classList.toggle('force-show',!!on); if(on) headerEl.classList.remove('is-hidden'); }, show, hide};
 })();
 
-/* Anchored menu positioning */
+/* Anchored menu positioning (fixed near the kebab) */
 function positionMenu(){
   if(!menu.classList.contains('show')) return;
   const r=kebabBtn.getBoundingClientRect();
   const margin=8;
-  const left=Math.min(
-    Math.max(8, r.right - menu.offsetWidth),
-    window.innerWidth - menu.offsetWidth - 8
-  );
-  const top=Math.min(
-    r.bottom + margin,
-    window.innerHeight - menu.offsetHeight - 8
-  );
+  const left=Math.min(Math.max(8, r.right - menu.offsetWidth), window.innerWidth - menu.offsetWidth - 8);
+  const top=Math.min(r.bottom + margin, window.innerHeight - menu.offsetHeight - 8);
   menu.style.left = `${left}px`;
   menu.style.top  = `${top}px`;
 }
@@ -286,22 +272,21 @@ kebabBtn.addEventListener('click',(e)=>{
   else { menu.classList.remove('show'); }
   window.OnlyRoadsHeader?.forceShow(willShow);
 });
-window.addEventListener('resize', positionMenu);
+window.addEventListener('resize', positionMenu, {passive:true});
 window.addEventListener('scroll', positionMenu, {passive:true});
 document.addEventListener('click',e=>{
   const outside=!menu.contains(e.target)&&e.target!==kebabBtn;
   if(outside&&menu.classList.contains('show')){ menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false); }
 });
 
-/* ===== “Save image” (poster) ===== */
+/* ===== “Save image” ===== */
 document.getElementById('miSave').addEventListener('click', async ()=>{
   menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
   try{
     document.body.classList.add('exporting');
     await new Promise(r=>requestAnimationFrame(r));
-    const mapShot=await html2canvas(document.getElementById('map'),{useCORS:true,backgroundColor:null,scale:2});
+    const mapShot = await snapshotMapForPoster();
     document.body.classList.remove('exporting');
-
     const poster=await buildPosterCanvas(mapShot);
     const a=document.createElement('a'); a.href=poster.toDataURL('image/png'); a.download=`onlyroads_poster_${Date.now()}.png`; a.click();
     toast('Image saved');
@@ -324,7 +309,7 @@ document.getElementById('miFeedback').addEventListener('click',()=>{
 function refreshTripUI(){
   tripSelect.innerHTML='';
   trips.forEach(t=>{const o=document.createElement('option');o.value=t.id;o.textContent=t.name;if(t.id===activeTripId)o.selected=true;tripSelect.appendChild(o);});
-  const act=getActiveTrip(); const chip=document.getElementById('tripColorChip'); if(chip) chip.style.background = act ? act.color : 'transparent';
+  const act=getActiveTrip(); tripColorChip.style.background = act ? act.color : 'transparent';
   renderLegend();
 }
 tripSelect.addEventListener('change',()=>{activeTripId=+tripSelect.value||null; renderList(); updateMap(); updateEmptyState(); highlightLegendActive();});
@@ -339,26 +324,42 @@ function updateEmptyState(){
   legendEl.classList.toggle('show', hasTrip);
 }
 
-/* Create trip */
+/* Create / rename / delete trips */
 function createTripFlow(){
-  const raw=prompt('Name your new trip:', '');
-  if(raw===null) return;
-  const name=(raw||'').trim();
-  addTrip(name||undefined, PALETTE[(tripCounter)%PALETTE.length]);
+  try{
+    const raw=prompt('Name your new trip:', '');
+    if(raw===null) return;
+    const name=(raw||'').trim();
+    addTrip(name);
+  }catch(e){
+    console.error('createTripFlow error:', e);
+    toast('Could not create new trip');
+  }
 }
-function addTrip(name,color){
+function addTrip(name){
   const id=++tripCounter;
-  trips.push({id,name:name||`Trip ${id}`,color:color||PALETTE[(id-1)%PALETTE.length],cities:[]});
-  activeTripId=id; refreshTripUI(); renderList(); recomputeUnlockedFromCities(); updateMap(); updateEmptyState(); toast(`Created trip “${getActiveTrip().name}”`);
+  const t={ id, name: name || `Trip ${id}`, color: PALETTE[(id-1)%PALETTE.length], cities:[] };
+  trips.push(t);
+  activeTripId=id;
+
+  refreshTripUI();
+  renderList();
+  recomputeUnlockedFromCities();
+  updateMap();
+  updateEmptyState();
+  updateShareURL();
+
+  toast(`Created trip “${t.name}”`);
 }
 document.getElementById('fabAddTrip').addEventListener('click', createTripFlow);
 belowHint.addEventListener('click', createTripFlow);
 belowHint.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' ') { e.preventDefault(); createTripFlow(); } });
 
-/* Rename / Delete */
 document.getElementById('renameTripBtn').addEventListener('click',()=>{
   const t=getActiveTrip(); if(!t){toast('No trip');return;}
-  const raw=prompt('Rename trip:', t.name||''); if(raw===null)return; const n=raw.trim(); if(n){t.name=n; refreshTripUI(); updateShareURL();}
+  const raw=prompt('Rename trip:', t.name||''); if(raw===null)return;
+  const n=(raw||'').trim();
+  if(n){t.name=n; refreshTripUI(); updateShareURL();}
 });
 document.getElementById('deleteTripBtn').addEventListener('click',()=>{
   const t=getActiveTrip(); if(!t) return; if(!confirm(`Delete “${t.name}”?`)) return;
@@ -366,30 +367,80 @@ document.getElementById('deleteTripBtn').addEventListener('click',()=>{
   recomputeUnlockedFromCities(); updateMap(); renderList(); refreshTripUI(); updateEmptyState(); updateShareURL();
 });
 
-/* ===== Autocomplete (keyboard-aware) ===== */
+/* ===== Color picker ===== */
+(function initColorPicker(){
+  cpSwatches.innerHTML='';
+  PALETTE.forEach(hex=>{
+    const b=document.createElement('button'); b.className='cp-swatch'; b.style.background=hex; b.setAttribute('aria-label',`Choose ${hex}`);
+    b.addEventListener('click', ()=>applyTripColor(hex,true));
+    cpSwatches.appendChild(b);
+  });
+  function positionPopover(){ const r=tripColorBtn.getBoundingClientRect(); cp.style.top=`${r.bottom+window.scrollY+8}px`; const maxLeft=window.scrollX+document.documentElement.clientWidth-cp.offsetWidth-8; cp.style.left=`${Math.min(r.left+window.scrollX,maxLeft)}px`; }
+  function openPopover(){ if(cp.hidden){ cp.hidden=false; requestAnimationFrame(()=>{ positionPopover(); }); } }
+  function closePopover(){ cp.hidden=true; }
+  tripColorBtn.addEventListener('click',(e)=>{ e.stopPropagation(); openPopover(); });
+  cpClose.addEventListener('click', closePopover);
+  cpCustom.addEventListener('input', ()=> applyTripColor(cpCustom.value, true));
+  document.addEventListener('click',(e)=>{ if(!cp.hidden && !cp.contains(e.target) && e.target!==tripColorBtn) closePopover(); });
+  window.addEventListener('resize', ()=>{ if(!cp.hidden) positionPopover(); });
+  window.applyTripColor=function(hex,persist){ const t=getActiveTrip(); if(!t) return; t.color=hex; tripColorChip.style.background=hex; renderLegend(); updateMap(); if(persist) updateShareURL(); };
+})();
+
+/* ===== Autocomplete (delegated, capture-phase) ===== */
 let acTimer=null;
+let acItemsCache=[]; // keeps current result set for delegated handler
 const headerEl = document.querySelector('header');
 function headerHeight(){ return headerEl?.getBoundingClientRect().height || 0; }
 function ensureCityBoxVisible(instant=false){ const r=controls.getBoundingClientRect(); const topTarget=(window.scrollY+r.top)-headerHeight()-8; window.scrollTo({top:Math.max(0,topTarget),behavior:instant?'auto':'smooth'}); }
 function resizeAutocompleteForViewport(){ const inputRect=input.getBoundingClientRect(); const vv=window.visualViewport; const viewportBottom=vv?(vv.offsetTop+vv.height):window.innerHeight; const available=Math.max(120,viewportBottom-inputRect.bottom-8); ac.style.maxHeight=`${Math.floor(available)}px`; }
 function keyboardAwarePadding(on){ if(on && window.visualViewport){ const vv=window.visualViewport; const kb=Math.max(0, window.innerHeight - (vv.height||window.innerHeight)); document.body.style.paddingBottom=`${kb+16}px`; }else{ document.body.style.paddingBottom=''; } }
 
+function handlePickIndex(idx){
+  const it = acItemsCache[idx];
+  if(!it) return;
+  ac.classList.remove('show');
+  input.value='';
+  addCity(it);
+  // prevent the doc click from re-opening things; also move focus out
+  input.blur();
+}
+function delegatedPickHandler(e){
+  const item = e.target.closest('.ac-item');
+  if(!item || !ac.contains(item)) return;
+  // capture before blur and outside-click handlers
+  e.preventDefault();
+  e.stopPropagation();
+  const idx = +item.dataset.i;
+  handlePickIndex(idx);
+}
+ac.addEventListener('pointerdown', delegatedPickHandler, {capture:true});
+ac.addEventListener('mousedown', delegatedPickHandler, {capture:true});
+ac.addEventListener('touchstart', delegatedPickHandler, {capture:true, passive:false});
+
 input.addEventListener('focus', ()=>{ ensureCityBoxVisible(false); resizeAutocompleteForViewport(); keyboardAwarePadding(true); });
 input.addEventListener('input', ()=>{
   const q=input.value.trim();
   if(acTimer)clearTimeout(acTimer);
-  if(!q){ac.classList.remove('show');ac.innerHTML='';return;}
+  if(!q){ac.classList.remove('show');ac.innerHTML='';acItemsCache=[];return;}
   acTimer=setTimeout(()=>fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=us&limit=6&q=${encodeURIComponent(q)}`)
     .then(r=>r.json()).then(rows=>{
       ac.innerHTML='';
-      const items=rows.map(row=>{
-        const a=row.address||{}; const cityName=a.city||a.town||a.village||a.hamlet||row.display_name.split(',')[0];
-        const stateFull=canonicalStateName(a.state||''); const ab=STATE_ABBR[stateFull]||'';
+      acItemsCache = rows.map(row=>{
+        const a=row.address||{};
+        const cityName=a.city||a.town||a.village||a.hamlet||row.display_name.split(',')[0];
+        const stateFull=canonicalStateName(a.state||'');
+        const ab=STATE_ABBR[stateFull]||'';
         if(!cityName||!ab||!stateFull) return null;
         return {label:`${cityName}, ${ab}`, name:cityName, stateFull, stateAbbr:ab, lat:+row.lat, lon:+row.lon};
       }).filter(Boolean);
-      if(!items.length){ac.classList.remove('show');return;}
-      items.forEach(it=>{const d=document.createElement('div'); d.className='ac-item'; d.textContent=it.label; d.onclick=()=>{ac.classList.remove('show');input.value='';addCity(it);}; ac.appendChild(d);});
+      if(!acItemsCache.length){ac.classList.remove('show');return;}
+      acItemsCache.forEach((it,idx)=>{
+        const d=document.createElement('div');
+        d.className='ac-item';
+        d.dataset.i = String(idx);
+        d.textContent=it.label;
+        ac.appendChild(d);
+      });
       ac.classList.add('show'); resizeAutocompleteForViewport(); ensureCityBoxVisible(true);
     }).catch(()=>{}),200);
 });
@@ -420,28 +471,47 @@ function renderList(){
   });
 }
 
+/* ===== Legend helpers ===== */
+function renderLegend(){
+  legendEl.innerHTML='';
+  if(!trips.length){ legendEl.classList.remove('show'); return; }
+  trips.forEach(t=>{
+    const btn=document.createElement('button');
+    btn.className='item'; btn.type='button';
+    btn.setAttribute('data-id', t.id);
+    btn.setAttribute('aria-label', `Switch to ${t.name}`);
+    btn.innerHTML=`<span class="chip" style="background:${t.color}"></span><span>${t.name}</span>`;
+    btn.addEventListener('click', ()=> activateTripById(t.id));
+    btn.addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); activateTripById(t.id); }});
+    legendEl.appendChild(btn);
+  });
+  legendEl.classList.add('show');
+  highlightLegendActive();
+}
+function highlightLegendActive(){
+  [...legendEl.children].forEach(el=>{
+    const isActive = +el.getAttribute('data-id') === activeTripId;
+    el.classList.toggle('is-active', isActive);
+  });
+}
+function activateTripById(id){
+  if(activeTripId === id) return;
+  activeTripId = id;
+  for(const opt of tripSelect.options){ opt.selected = (+opt.value === id); }
+  renderList(); updateMap(); updateEmptyState(); highlightLegendActive(); updateShareURL();
+}
+
 /* ===== Map / drawing ===== */
-let map, statesGlowLayer, statesLayer, stateLayerByName={}, conusBounds=null;
+let map, statesLayer, stateLayerByName={}, conusBounds=null;
 let markerById={}, routeLines={}, unlockedStates=new Set();
-
-/* Tweakables for desktop size & micro-alignment */
-const MAP_FINE_SCALE = 0.85;   // desktop-only fine scale
-const MAP_Y_NUDGE   = -213;    // px (negative = up)
-const MAP_X_NUDGE   = -50;     // px (negative = left)
-
-/* Fine-scale gate: desktop/tablet only; phones use native fit */
-const FINE_SCALE_MIN_W = 900; // px
-function fineScaleActive(){ return window.innerWidth >= FINE_SCALE_MIN_W; }
-
-/* Height-fit config */
-const AUTO_FIT = { OVERSCAN: 1.06, PAD: 8 };
 
 function initMap(){
   map=L.map('map',{
     zoomControl:false,attributionControl:false,
-    dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false
+    dragging:false,scrollWheelZoom:false,doubleClickZoom:false,
+    boxZoom:false,keyboard:false,touchZoom:false,worldCopyJump:false,
+    zoomSnap:0, zoomDelta:0.25
   });
-  map.createPane('statesGlowPane');
   map.createPane('statesPane');
   map.createPane('routesPane');
   map.createPane('markersPane');
@@ -450,11 +520,6 @@ function initMap(){
     .then(r=>r.json()).then(geo=>{
       const conus=geo.features.filter(f=>!["Alaska","Hawaii","Puerto Rico"].includes(f.properties.name));
 
-      statesGlowLayer=L.geoJSON({type:"FeatureCollection",features:conus},{
-        pane:'statesGlowPane',
-        style:()=>({color:'#ffffff',weight:1,opacity:0.9,fillOpacity:0,className:'or-states-glow'}),
-      }).addTo(map);
-
       statesLayer=L.geoJSON({type:"FeatureCollection",features:conus},{
         pane:'statesPane',
         style:()=>({color:'#ffffff',weight:1,fillColor:'#0b1c3a',fillOpacity:1}),
@@ -462,83 +527,47 @@ function initMap(){
       }).addTo(map);
 
       const tmp=L.geoJSON({type:"FeatureCollection",features:conus}); conusBounds=tmp.getBounds();
-      autoFitUSHeight();
+
+      map.setMaxBounds(conusBounds.pad(0.02));
+
+      fitUS_HeightFirst();
       refreshAllStateStyles(); updateMap();
 
-      map.on('move zoom viewreset moveend zoomend', applyFineScale);
+      const ro=new ResizeObserver(()=>{ map.invalidateSize(false); fitUS_HeightFirst(); });
+      ro.observe(document.getElementById('map'));
     });
 }
 
-function _usPixelHeightAtZoom(bounds, z) {
-  const ne = map.project(bounds.getNorthEast(), z);
-  const sw = map.project(bounds.getSouthWest(), z);
-  return Math.abs(ne.y - sw.y);
-}
+/* --- Height-first fit (minimize top/bottom gaps) --- */
+function setZoomByFactor(f){ if(f>0 && f!==1){ map.setZoom(map.getZoom()+Math.log2(f),{animate:false}); } }
+function fitByHeight(bounds, m){
+  if(!bounds || !map) return;
 
-function autoFitUSHeight() {
-  if (!conusBounds || !map) return;
-  map.invalidateSize(false);
+  map.fitBounds(bounds,{
+    paddingTopLeft:[m.left,m.top],
+    paddingBottomRight:[m.right,m.bottom],
+    animate:false
+  });
 
-  const padY = AUTO_FIT.PAD * 2;
-  const targetH = Math.max(1, map.getSize().y - padY);
-  const wantedH = targetH * AUTO_FIT.OVERSCAN;
+  const size=map.getSize();
+  const targetH = Math.max(1, size.y - (m.top+m.bottom));
+  const nw=bounds.getNorthWest(), sw=bounds.getSouthWest(), ne=bounds.getNorthEast();
+  const pN=map.latLngToLayerPoint(nw), pS=map.latLngToLayerPoint(sw), pW=map.latLngToLayerPoint(nw), pE=map.latLngToLayerPoint(ne);
+  const curH=Math.abs(pN.y - pS.y);
 
-  let zMin = 0, zMax = 22;
-  for (let i = 0; i < 25; i++) {
-    const zMid = (zMin + zMax) / 2;
-    const h = _usPixelHeightAtZoom(conusBounds, zMid);
-    if (h < wantedH) zMin = zMid; else zMax = zMid;
-  }
-  const z = zMin;
-  const center = conusBounds.getCenter();
-  map.setView(center, z, { animate:false });
-  requestAnimationFrame(applyFineScale);
-}
-window.addEventListener('resize', ()=>{
-  autoFitUSHeight();
-  requestAnimationFrame(applyFineScale);
-}, {passive:true});
-
-/* Fine scale + precise centering (desktop only) + nudges */
-function applyFineScale() {
-  const pane = map?.getPanes()?.mapPane;
-  if (!pane || !conusBounds) return;
-
-  const base    = pane.style.transform || '';
-  const cleaned = base
-    .replace(/\s+scale\([^)]+\)/, '')
-    .replace(/\s+translateX\([^)]+\)/, '')
-    .replace(/\s+translateY\([^)]+\)/, '');
-
-  // Phones & small screens: clear our transforms and exit
-  if (!fineScaleActive()) {
-    pane.style.transformOrigin = '';
-    pane.style.transform = cleaned;
-    return;
+  if(curH>0 && targetH>0){
+    const factor=(targetH/curH)*HEIGHT_FIT_SAFETY;
+    setZoomByFactor(factor);
   }
 
-  // Desktop: scale around US center and nudge
-  const z   = map.getZoom();
-  const cPx = map.project(conusBounds.getCenter(), z);
-
-  const size   = map.getSize();
-  const pNE    = map.project(conusBounds.getNorthEast(), z);
-  const pSW    = map.project(conusBounds.getSouthWest(), z);
-  const hUS    = Math.abs(pNE.y - pSW.y);
-  const dyCent = (size.y - hUS * MAP_FINE_SCALE) / 2;
-  const dy     = dyCent + MAP_Y_NUDGE;
-  const dx     = MAP_X_NUDGE;
-
-  pane.style.transformOrigin = `${cPx.x}px ${cPx.y}px`;
-  pane.style.transform = `${cleaned} translateX(${dx}px) translateY(${dy}px) scale(${MAP_FINE_SCALE})`;
+  const maxW = Math.max(1, size.x - (m.left+m.right));
+  const pE2=map.latLngToLayerPoint(ne), pW2=map.latLngToLayerPoint(nw);
+  const w2=Math.abs(pE2.x - pW2.x);
+  if(w2>maxW){ setZoomByFactor(maxW/w2); }
 }
+function fitUS_HeightFirst(){ fitByHeight(conusBounds, MAP_MARGINS); }
 
-/* Inner shadow class for visited states */
-function setStateInnerShadow(name, on){
-  const layer=stateLayerByName[name]; if(!layer) return;
-  const el = layer.getElement && layer.getElement();
-  if(el){ el.classList.toggle('or-state-inner', !!on); }
-}
+/* Styles */
 function applyStateStyle(name,selected){
   const layer=stateLayerByName[name]; if(!layer) return;
   if(selected){
@@ -546,7 +575,6 @@ function applyStateStyle(name,selected){
   }else{
     layer.setStyle({fillColor:'#0b1c3a',fillOpacity:1,color:'#ffffff',weight:1});
   }
-  setStateInnerShadow(name, selected);
 }
 function refreshAllStateStyles(){ Object.keys(stateLayerByName).forEach(n=>applyStateStyle(n,unlockedStates.has(n))); }
 
@@ -562,6 +590,7 @@ function recomputeUnlockedFromCities(){
   updateCounter(); refreshAllStateStyles();
 }
 
+/* Curves */
 function _scaledDx(p1,p2){ const avg=((p1[0]+p2[0])/2)*Math.PI/180; return (p2[1]-p1[1])*Math.cos(avg); }
 function adaptiveTauFor(p1,p2){ const dx=Math.abs(_scaledDx(p1,p2)), dy=Math.abs(p2[0]-p1[0]), d=Math.hypot(dx,dy); const r=dx/(dx+dy+1e-9); let tau=0.62+(r-0.5)*0.36+Math.min(d/5,1)*0.16; return Math.max(0.5,Math.min(0.85,tau)); }
 function _controls(p0,p1,p2,p3,tau){
@@ -590,19 +619,16 @@ function isClosed(points){ if(points.length<3) return false; const a=points[0], 
 
 function updateMap(){
   if(!map) return;
-  // clear
   for(const id in markerById){ if(markerById[id]) map.removeLayer(markerById[id]); }
   markerById={};
   Object.values(routeLines).forEach(l=>{ if(l) map.removeLayer(l); }); routeLines={};
 
-  // markers
   trips.forEach(t=>{
     t.cities.forEach(c=>{
       markerById[c.id]=L.circleMarker([c.lat,c.lon], markerStyle(c.id===selectedId)).addTo(map);
     });
   });
 
-  // routes
   trips.forEach(t=>{
     if(t.cities.length>1){
       const pts=t.cities.map(c=>[c.lat,c.lon]);
@@ -612,7 +638,7 @@ function updateMap(){
     }
   });
 
-  autoFitUSHeight(); updateSelectionVisuals();
+  fitUS_HeightFirst(); updateSelectionVisuals();
 }
 
 /* City add/remove */
@@ -631,36 +657,15 @@ function removeCityById(id){
   toast(`Removed ${removed.name}, ${removed.stateAbbr}`);
 }
 
-/* Legend + switching */
-function renderLegend(){
-  legendEl.innerHTML='';
-  trips.forEach(t=>{
-    const d=document.createElement('button'); d.className='item'; d.type='button';
-    d.setAttribute('data-id', t.id); d.setAttribute('aria-label', `Switch to ${t.name}`); d.tabIndex=0;
-    d.innerHTML=`<span class="chip" style="background:${t.color}"></span><span>${t.name}</span>`;
-    d.addEventListener('click', ()=> activateTripById(t.id));
-    d.addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); activateTripById(t.id); }});
-    legendEl.appendChild(d);
-  });
-  legendEl.classList.toggle('show', trips.length>0);
-  highlightLegendActive();
-}
-function highlightLegendActive(){ [...legendEl.children].forEach(el=>{ el.classList.toggle('is-active', +el.getAttribute('data-id')===activeTripId); }); }
-function activateTripById(id){
-  if (activeTripId === id) return;
-  activeTripId = id;
-  refreshTripUI(); renderList(); updateMap(); updateEmptyState(); highlightLegendActive();
-}
-
 /* Serialize/share */
 function serializeState(){ return trips.map(t=>({n:t.name,color:t.color,c:t.cities.map(c=>({n:c.name,st:c.stateAbbr,lat:+c.lat.toFixed(5),lon:+c.lon.toFixed(5)}))})); }
 function deserializeState(obj){
   trips=[]; activeTripId=null; tripCounter=0; cidCounter=0; selectedId=null;
   (obj||[]).forEach(bundle=>{
     const id=++tripCounter;
-    const theTrip={id,name:bundle.n||`Trip ${id}`,color:bundle.color||PALETTE[(id-1)%PALETTE.length],cities:[]};
-    (bundle.c||[]).forEach(cc=>theTrip.cities.push({id:++cidCounter,name:cc.n,stateAbbr:cc.st,stateFull:ABBR_TO_NAME[cc.st],lat:+cc.lat,lon:+cc.lon}));
-    trips.push(theTrip); activeTripId=id;
+    const t={id,name:bundle.n||`Trip ${id}`,color:bundle.color||PALETTE[(id-1)%PALETTE.length],cities:[]};
+    (bundle.c||[]).forEach(cc=>t.cities.push({id:++cidCounter,name:cc.n,stateAbbr:cc.st,stateFull:ABBR_TO_NAME[cc.st],lat:+cc.lat,lon:+cc.lon}));
+    trips.push(t); activeTripId=id;
   });
   refreshTripUI(); renderList(); recomputeUnlockedFromCities(); updateMap(); updateEmptyState();
 }
@@ -669,72 +674,49 @@ function updateShareURL(){
   const url=new URL(location.href); url.hash='s='+b64; history.replaceState(null,'',url.toString()); return url.toString();
 }
 
-/* ===== Poster helpers ===== */
-function haversineMiles(lat1,lon1,lat2,lon2){
-  const R=3958.7613, toRad=d=>d*Math.PI/180;
-  const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
-  const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
-  return 2*R*Math.asin(Math.sqrt(a));
-}
-function totalTripMiles(trip){
-  if(!trip || trip.cities.length<2) return 0;
-  let miles=0; for(let i=0;i<trip.cities.length-1;i++){ const a=trip.cities[i], b=trip.cities[i+1]; miles += haversineMiles(a.lat,a.lon,b.lat,b.lon); }
-  return miles;
-}
-function formatMiles(m){ return m>=1000 ? `${(m/1000).toFixed(1)}k miles` : `${Math.round(m/10)*10} miles`; }
+/* ===== Poster snapshot/build (unchanged for now) ===== */
+async function snapshotMapForPoster(){
+  const mapEl=document.getElementById('map');
+  const original = { width: mapEl.style.width, height: mapEl.style.height, transform: mapEl.style.transform };
 
-/* Draw rounded rect helper */
-function roundRect(ctx,x,y,w,h,r){ const rr=Math.min(r, w/2, h/2); ctx.beginPath(); ctx.moveTo(x+rr,y); ctx.arcTo(x+w,y,x+w,y+h,rr); ctx.arcTo(x+w,y+h,x,y+h,rr); ctx.arcTo(x,y+h,x,y,rr); ctx.arcTo(x,y,x+w,y,rr); ctx.closePath(); }
+  const cardX = 54, cardW = POSTER_W-108;
+  const cardY = POSTER_INSET_TOP_SAFE + 160;
+  const cardH = 420;
+  const snapW = Math.floor(cardW);
+  const snapH = Math.floor(cardH);
 
-/* Build poster */
-async function buildPosterCanvas(mapCanvas){
+  mapEl.style.transform = '';
+  mapEl.style.width = snapW+'px';
+  mapEl.style.height = snapH+'px';
+
+  map.invalidateSize();
+  if(conusBounds){ fitByHeight(conusBounds, POSTER_MARGINS); }
+
+  const canvas = await html2canvas(mapEl, {useCORS:true, backgroundColor:null, scale:2});
+
+  mapEl.style.width = original.width;
+  mapEl.style.height = original.height;
+  mapEl.style.transform = original.transform;
+  map.invalidateSize();
+  fitUS_HeightFirst();
+
+  return {canvas, cardX, cardY, cardW, cardH};
+}
+async function buildPosterCanvas(mapShot){
   const canvas=document.createElement('canvas'); canvas.width=POSTER_W; canvas.height=POSTER_H;
   const ctx=canvas.getContext('2d');
   ctx.fillStyle=POSTER_BG; ctx.fillRect(0,0,POSTER_W,POSTER_H);
 
-  const unlocked = unlockedStates.size || 0;
+  const {canvas:mapCanvas, cardX, cardY, cardW, cardH} = mapShot;
 
-  /* Header */
-  const leftPad=64, topPad=64;
-  ctx.fillStyle='#eaf2ff'; ctx.textBaseline='alphabetic';
-  ctx.font='900 168px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
-  const big=String(unlocked);
-  const bigW=ctx.measureText(big).width;
-  const baseY=topPad+168;
-  ctx.fillText(big, leftPad, baseY);
-
-  ctx.font='800 64px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
-  ctx.fillText('/ 50', leftPad + bigW + 18, baseY - 28);
-
-  ctx.font='700 64px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
-  ctx.textBaseline='top';
-  ctx.fillText('STATES', leftPad, topPad);
-  ctx.fillText('UNLOCKED', leftPad, topPad + 64 + 8);
-
-  /* Map card */
-  const cardMarginX=48, cardX=leftPad, cardY=topPad+220, cardW=POSTER_W-leftPad-cardMarginX, cardH=POSTER_H*0.32, radius=28;
-  ctx.save();
-  ctx.shadowColor='rgba(0,0,0,0.5)'; ctx.shadowBlur=40; ctx.shadowOffsetY=18;
-  roundRect(ctx,cardX,cardY,cardW,cardH,radius); ctx.fillStyle=CARD_BG; ctx.fill();
-  ctx.restore();
-
-  const pad=28; const innerW=cardW-2*pad, innerH=cardH-2*pad; const mapRatio=mapCanvas.width/mapCanvas.height;
+  const innerW=cardW, innerH=cardH;
+  const mapRatio=mapCanvas.width/mapCanvas.height;
   let drawW=innerW, drawH=innerW/mapRatio;
   if(drawH>innerH){ drawH=innerH; drawW=innerH*mapRatio; }
-  const drawX=cardX + (cardW-drawW)/2; const drawY=cardY + (cardH-drawH)/2;
-
-  ctx.save(); roundRect(ctx,cardX,cardY,cardW,cardH,radius); ctx.clip(); ctx.drawImage(mapCanvas, drawX, drawY, drawW, drawH); ctx.restore();
-
-  /* Trip list */
-  const sectionY=cardY+cardH+48;
-  ctx.fillStyle='#eaf2ff'; ctx.font='900 54px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif'; ctx.fillText('Highlighted  road trips:', leftPad, sectionY);
-  const itemsYStart=sectionY+72; ctx.font='500 36px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif'; const bulletGap=54, colorBarW=36, colorBarH=8;
-
-  const tripSummaries=trips.map(t=>({id:t.id,color:t.color,name:t.name,miles:totalTripMiles(t)})).sort((a,b)=>b.miles-a.miles);
-  tripSummaries.forEach((row,idx)=>{ const y=itemsYStart+idx*bulletGap; ctx.fillStyle=row.color; ctx.fillRect(leftPad,y+16,colorBarW,colorBarH); ctx.fillStyle='#e6ecff'; ctx.fillText(`${formatMiles(row.miles)}: ${row.name}`, leftPad+colorBarW+14, y); });
-
-  /* Watermark */
-  const wm=WATERMARK_TEXT; ctx.save(); ctx.translate(POSTER_W-26, POSTER_H-120); ctx.rotate(-Math.PI/2); ctx.fillStyle='#ffffff17'; ctx.font='900 120px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif'; ctx.fillText(wm,0,0); ctx.restore();
+  drawW*=POSTER_MAP_SCALE; drawH*=POSTER_MAP_SCALE;
+  const drawX=cardX + (cardW-drawW)/2 + POSTER_MAP_INSET_X;
+  const drawY=cardY + (cardH-drawH)/2 + POSTER_MAP_INSET_Y;
+  ctx.drawImage(mapCanvas, drawX, drawY, drawW, drawH);
 
   return canvas;
 }
