@@ -200,7 +200,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant (single source of truth) ===== */
-const VERSION = '0.086';
+const VERSION = '0.087';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -218,11 +218,6 @@ const PALETTE=['#45a3ff','#ff6b6b','#ffd166','#06d6a0','#c792ea','#ff9f1c','#00b
 
 const DOT_RADIUS=3.5, DOT_WEIGHT=1, RED='#ff0000', GREEN='#30e6b6';
 const CURVE_GAIN=1.25;
-
-/* Site-map view tweak knobs (desktop) */
-const MAP_FINE_SCALE = 0.85;   // < 1 = shrink a little inside container
-const MAP_X_NUDGE   = -50;     // px left(-)/right(+)
-const MAP_Y_NUDGE   = -213;    // px up(-)/down(+)
 
 /* Poster map knobs (easy manual control) */
 const POSTER_W = 1080, POSTER_H = 1920;
@@ -448,9 +443,13 @@ let map, statesGlowLayer, statesLayer, stateLayerByName={}, conusBounds=null;
 let markerById={}, routeLines={}, unlockedStates=new Set();
 
 function initMap(){
-  map=L.map('map',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false});
-  map.createPane('statesGlowPane');  // glow underneath
-  map.createPane('statesPane');      // main fill/stroke
+  map=L.map('map',{
+    zoomControl:false,attributionControl:false,
+    dragging:false,scrollWheelZoom:false,doubleClickZoom:false,
+    boxZoom:false,keyboard:false,touchZoom:false,worldCopyJump:false
+  });
+  map.createPane('statesGlowPane');
+  map.createPane('statesPane');
   map.createPane('routesPane');
   map.createPane('markersPane');
 
@@ -471,22 +470,36 @@ function initMap(){
         onEachFeature:(f,l)=>{stateLayerByName[f.properties.name]=l;}
       }).addTo(map);
 
-      const tmp=L.geoJSON({type:"FeatureCollection",features:conus}); conusBounds=tmp.getBounds(); fitUS();
+      const tmp=L.geoJSON({type:"FeatureCollection",features:conus}); conusBounds=tmp.getBounds();
+
+      // Lock panning to US with a tiny buffer
+      map.setMaxBounds(conusBounds.pad(0.02));
+
+      fitUS();
       refreshAllStateStyles(); updateMap();
+
+      // Refit on container resize (rotation, window resize, etc.)
+      const ro=new ResizeObserver(()=>{ map.invalidateSize(false); fitUS(); });
+      ro.observe(document.getElementById('map'));
     });
 }
-function fitUS(){ if(conusBounds){
-  map.fitBounds(conusBounds.pad(0.01),{animate:false});
-  // Apply desktop fine-scale/nudges by CSS transform so map appears bigger but stays centered.
+
+function fitUS(){
+  if(!conusBounds || !map) return;
+  // Responsive padding based on container aspect ratio
   const el=document.getElementById('map');
-  const isMobile=window.matchMedia('(max-width: 640px)').matches;
-  if(!isMobile){
-    el.style.transformOrigin='center';
-    el.style.transform=`translate(${MAP_X_NUDGE}px, ${MAP_Y_NUDGE}px) scale(${MAP_FINE_SCALE})`;
-  }else{
-    el.style.transform=''; // no nudges on mobile
-  }
-}}
+  const r=el.getBoundingClientRect();
+  const ar=r.width/Math.max(1,r.height);
+
+  const base=12;
+  const pad = ar < 1.6 ? base*2 : base; // more padding on tall/narrow screens
+
+  map.fitBounds(conusBounds,{
+    paddingTopLeft:[pad,pad],
+    paddingBottomRight:[pad,pad],
+    animate:false
+  });
+}
 
 function setStateInnerShadow(name, on){
   const layer=stateLayerByName[name]; if(!layer) return;
@@ -658,7 +671,7 @@ async function snapshotMapForPoster(){
   const snapH = Math.floor(cardH);
 
   // Temporarily resize DOM container to the poster card size
-  mapEl.style.transform = ''; // neutralize site nudges
+  mapEl.style.transform = ''; // neutralize site nudges (none now, but safe)
   mapEl.style.width = snapW+'px';
   mapEl.style.height = snapH+'px';
 
