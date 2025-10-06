@@ -203,7 +203,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.081';
+const VERSION = '0.082';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -225,9 +225,8 @@ const CURVE_GAIN=1.25;
 /* Poster defaults */
 const POSTER_W = 1080, POSTER_H = 1920;
 const POSTER_BG = '#0b1c3a';
-const CARD_BG = '#0f2550';
-const WATERMARK_TEXT = 'ONLYROADS';
 
+/* Map UI refs */
 const mapCounter=document.getElementById('mapCounter');
 const belowHint=document.getElementById('belowHint');
 const tripBar=document.getElementById('tripBar'),
@@ -571,7 +570,7 @@ function _controls(p0,p1,p2,p3,tau){
   const c2=[ p2[0]-k*(p3[0]-p1[0]),  p1[1]-k*((dx32+dx21)/(Math.cos(avg2)||1)) ];
   return [c1,c2];
 }
-function buildSmoothPathAdaptive(points,{closed=false}={}){
+function buildSmoothPathAdaptive(points,{closed=false}){
   if(points.length<2) return null;
   const pts=points.slice();
   if(closed){ pts.unshift(points[points.length-2]||points[0]); pts.push(points[1]||points[0]); }
@@ -613,22 +612,6 @@ function updateMap(){
   });
 
   autoFitUSHeight(); updateSelectionVisuals();
-}
-
-/* City add/remove */
-function addCity(item){
-  const t=getActiveTrip(); if(!t){toast('Create a trip first (tap +)');return;}
-  item.id=++cidCounter; t.cities.push(item);
-  recomputeUnlockedFromCities(); updateMap(); renderList(); updateSelectionVisuals(); updateEmptyState();
-  toast(`Added ${item.name}, ${item.stateAbbr}`);
-}
-function removeCityById(id){
-  const t=getActiveTrip(); if(!t) return;
-  const idx=t.cities.findIndex(c=>c.id===id); if(idx===-1) return;
-  const removed=t.cities[idx]; t.cities.splice(idx,1);
-  if(selectedId===id) selectedId=null;
-  recomputeUnlockedFromCities(); updateMap(); renderList(); updateSelectionVisuals(); updateEmptyState();
-  toast(`Removed ${removed.name}, ${removed.stateAbbr}`);
 }
 
 /* Legend + switching */
@@ -683,58 +666,101 @@ function totalTripMiles(trip){
 }
 function formatMiles(m){ return m>=1000 ? `${(m/1000).toFixed(1)}k miles` : `${Math.round(m/10)*10} miles`; }
 
-/* Draw rounded rect helper */
-function roundRect(ctx,x,y,w,h,r){ const rr=Math.min(r, w/2, h/2); ctx.beginPath(); ctx.moveTo(x+rr,y); ctx.arcTo(x+w,y,x+w,y+h,rr); ctx.arcTo(x+w,y+h,x,y+h,rr); ctx.arcTo(x,y+h,x,y,rr); ctx.arcTo(x,y,x+w,y,rr); ctx.closePath(); }
-
-/* Build poster */
+/* ===== Build poster (v0.082 layout) ===== */
 async function buildPosterCanvas(mapCanvas){
   const canvas=document.createElement('canvas'); canvas.width=POSTER_W; canvas.height=POSTER_H;
   const ctx=canvas.getContext('2d');
+
+  // Background
   ctx.fillStyle=POSTER_BG; ctx.fillRect(0,0,POSTER_W,POSTER_H);
 
+  // Story-safe margins
+  const MARGIN_TOP = 250;
+  const MARGIN_BOTTOM = 250;
+  const usableH = POSTER_H - MARGIN_TOP - MARGIN_BOTTOM;
+
+  // ---- Header: “STATES UNLOCKED” + big count ----
   const unlocked = unlockedStates.size || 0;
+  const hdrX = 70, hdrY = MARGIN_TOP + 60;
 
-  /* Header */
-  const leftPad=64, topPad=64;
-  ctx.fillStyle='#eaf2ff'; ctx.textBaseline='alphabetic';
-  ctx.font='900 168px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
-  const big=String(unlocked);
-  const bigW=ctx.measureText(big).width;
-  const baseY=topPad+168;
-  ctx.fillText(big, leftPad, baseY);
+  // STATES / UNLOCKED stacked (Impact-like)
+  ctx.fillStyle = '#eaf2ff';
+  ctx.textBaseline = 'alphabetic';
+  ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 10; ctx.shadowOffsetY = 2;
 
-  ctx.font='800 64px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
-  ctx.fillText('/ 50', leftPad + bigW + 18, baseY - 28);
+  ctx.font='900 96px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
+  ctx.fillText('STATES', hdrX, hdrY + 96);
+  ctx.fillText('UNLOCKED', hdrX, hdrY + 96 + 84);
 
-  ctx.font='700 64px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
-  ctx.textBaseline='top';
-  ctx.fillText('STATES', leftPad, topPad);
-  ctx.fillText('UNLOCKED', leftPad, topPad + 64 + 8);
+  // Big number + /50 to the right
+  const numX = 420, numBaseY = hdrY + 96 + 70;
+  ctx.font='900 180px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
+  const big = String(unlocked);
+  const bigW = ctx.measureText(big).width;
+  ctx.fillText(big, numX, numBaseY);
 
-  /* Map card */
-  const cardMarginX=48, cardX=leftPad, cardY=topPad+220, cardW=POSTER_W-leftPad-cardMarginX, cardH=POSTER_H*0.32, radius=28;
+  ctx.font='900 84px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
+  ctx.fillText('/ 50', numX + bigW + 18, numBaseY - 18);
+
+  // ---- Map (no card, wider) ----
+  // target map rect
+  const mapTop = hdrY + 96 + 84 + 40;               // below header
+  const mapHeight = Math.min(usableH * 0.50, 680);  // cap so list fits
+  const mapSidePad = 60;
+  const mapWidth = POSTER_W - mapSidePad*2;
+
+  // Compute draw size inside target rect preserving map aspect
+  const ratio = mapCanvas.width / mapCanvas.height;
+  let drawW = mapWidth, drawH = mapWidth / ratio;
+  if(drawH > mapHeight){ drawH = mapHeight; drawW = mapHeight * ratio; }
+  const drawX = (POSTER_W - drawW)/2;
+  const drawY = mapTop + (mapHeight - drawH)/2;
+
+  // glow around map like screenshot
   ctx.save();
-  ctx.shadowColor='rgba(0,0,0,0.5)'; ctx.shadowBlur=40; ctx.shadowOffsetY=18;
-  roundRect(ctx,cardX,cardY,cardW,cardH,radius); ctx.fillStyle=CARD_BG; ctx.fill();
+  ctx.shadowColor='rgba(0,0,0,0.55)'; ctx.shadowBlur=40; ctx.shadowOffsetY=18;
+  ctx.drawImage(mapCanvas, drawX, drawY, drawW, drawH);
   ctx.restore();
 
-  const pad=28; const innerW=cardW-2*pad, innerH=cardH-2*pad; const mapRatio=mapCanvas.width/mapCanvas.height;
-  let drawW=innerW, drawH=innerW/mapRatio;
-  if(drawH>innerH){ drawH=innerH; drawW=innerH*mapRatio; }
-  const drawX=cardX + (cardW-drawW)/2; const drawY=cardY + (cardH-drawH)/2;
+  // ---- Trip list header ----
+  const listHeaderY = drawY + drawH + 54;
+  ctx.fillStyle='#eaf2ff';
+  ctx.shadowColor='rgba(0,0,0,0.35)'; ctx.shadowBlur=10; ctx.shadowOffsetY=2;
+  ctx.font='900 72px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
+  ctx.fillText('Highlighted  road trips:', 60, listHeaderY);
 
-  ctx.save(); roundRect(ctx,cardX,cardY,cardW,cardH,radius); ctx.clip(); ctx.drawImage(mapCanvas, drawX, drawY, drawW, drawH); ctx.restore();
+  // ---- Trip bullets (sorted by miles desc) ----
+  const startY = listHeaderY + 64;
+  const lineGap = 64;
+  const colorDashW = 86, colorDashH = 12, colorDashOffsetY = -22;
 
-  /* Trip list */
-  const sectionY=cardY+cardH+48;
-  ctx.fillStyle='#eaf2ff'; ctx.font='900 54px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif'; ctx.fillText('Highlighted  road trips:', leftPad, sectionY);
-  const itemsYStart=sectionY+72; ctx.font='500 36px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif'; const bulletGap=54, colorBarW=36, colorBarH=8;
+  const tripSummaries = trips.map(t=>({id:t.id,color:t.color,name:t.name,miles:totalTripMiles(t)}))
+                             .sort((a,b)=>b.miles-a.miles);
 
-  const tripSummaries=trips.map(t=>({id:t.id,color:t.color,name:t.name,miles:totalTripMiles(t)})).sort((a,b)=>b.miles-a.miles);
-  tripSummaries.forEach((row,idx)=>{ const y=itemsYStart+idx*bulletGap; ctx.fillStyle=row.color; ctx.fillRect(leftPad,y+16,colorBarW,colorBarH); ctx.fillStyle='#e6ecff'; ctx.fillText(`${formatMiles(row.miles)}: ${row.name}`, leftPad+colorBarW+14, y); });
+  ctx.font='900 42px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
+  ctx.shadowColor='rgba(0,0,0,0.3)'; ctx.shadowBlur=8; ctx.shadowOffsetY=2;
 
-  /* Watermark */
-  const wm=WATERMARK_TEXT; ctx.save(); ctx.translate(POSTER_W-26, POSTER_H-120); ctx.rotate(-Math.PI/2); ctx.fillStyle='#ffffff17'; ctx.font='900 120px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif'; ctx.fillText(wm,0,0); ctx.restore();
+  tripSummaries.forEach((row, i)=>{
+    const y = startY + i*lineGap;
+    // colored dash
+    ctx.fillStyle = row.color;
+    ctx.fillRect(60, y + colorDashOffsetY, colorDashW, colorDashH);
+
+    // text (white)
+    ctx.fillStyle = '#eaf2ff';
+    const milesTxt = formatMiles(row.miles);
+    ctx.fillText(`${milesTxt}: ${row.name}`, 60 + colorDashW + 22, y);
+  });
+
+  // ---- Vertical signature (bottom-right) ----
+  ctx.save();
+  ctx.translate(POSTER_W - 24, POSTER_H - MARGIN_BOTTOM + 10);
+  ctx.rotate(-Math.PI/2);
+  ctx.fillStyle='#eaf2ff';
+  ctx.shadowColor='rgba(0,0,0,0.35)'; ctx.shadowBlur=6; ctx.shadowOffsetY=2;
+  ctx.font='900 120px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif';
+  ctx.fillText('EMIN', 0, 0);
+  ctx.restore();
 
   return canvas;
 }
