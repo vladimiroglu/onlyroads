@@ -9,7 +9,6 @@
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-curve"></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-<!-- kept: present in earlier builds, harmless to load even if unused -->
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 
 <style>
@@ -80,7 +79,7 @@ body.exporting #fabAddTrip{visibility:hidden}
 /* Legend */
 .legend{display:none;flex-wrap:wrap;gap:10px;margin:6px 2px 0}
 .legend.show{display:flex}
-.legend .item{display:flex;align-items:center;gap:8px;background:#0f2550;border:1px solid #223a6c;padding:6px 10px;border-radius:12px;font-size:13px;color:#e8f0ffb3;cursor:pointer;outline:none}
+.legend .item{display:flex;align-items:center;gap:8px;background:#0f2550;border:1px solid #223a6c;padding:6px 10px;border-radius:12px;font-size:13px;color:var(--ink-dim);cursor:pointer;outline:none}
 .legend .item:hover{background:#153063}
 .legend .item.is-active{border-color:#3a58a2;color:#e8f0ff;box-shadow:0 0 0 2px #3a58a215 inset}
 .legend .chip{width:14px;height:14px;border-radius:50%;border:1px solid #fff6}
@@ -98,6 +97,16 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 /* Visual effects (only marker glow remains) */
 .or-marker-glow{ filter:url(#or-soft-glow); }
+
+/* Color picker popover */
+.cp-pop{position:absolute;z-index:12000;background:#0f2550;border:1px solid #223a6c;border-radius:12px;padding:10px;box-shadow:0 12px 30px rgba(0,0,0,.35);width:min(260px, 92vw)}
+.cp-row{display:flex;flex-wrap:wrap;gap:10px}
+.cp-swatch{width:28px;height:28px;border-radius:8px;border:1px solid #ffffff55;cursor:pointer}
+.cp-actions{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
+.cp-chip{display:inline-grid;grid-auto-flow:column;gap:8px;align-items:center;background:#1a2f5a;border:1px solid var(--panelBorder);color:#fff;border-radius:10px;padding:8px 10px;cursor:pointer}
+.cp-chip input[type="color"]{appearance:none;border:none;background:transparent;width:0;height:0;padding:0;margin:0}
+.cp-btn{background:#1a2f5a;border:1px solid var(--panelBorder);color:#fff;border-radius:10px;padding:8px 12px;cursor:pointer}
+.cp-btn:hover,.cp-chip:hover{background:#21366a}
 
 @media (max-width: 640px){
   #map{aspect-ratio: 21/10;}
@@ -157,9 +166,18 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 <footer id="footerNote"></footer>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+<!-- Color picker popover -->
+<div id="colorPicker" class="cp-pop" hidden>
+  <div class="cp-row" id="cpSwatches"></div>
+  <div class="cp-actions">
+    <label class="cp-chip"><input type="color" id="cpCustom" aria-label="Custom color"/>Custom…</label>
+    <button id="cpClose" class="cp-btn">Done</button>
+  </div>
+</div>
+
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.106';
+const VERSION = '0.107';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -178,12 +196,12 @@ const PALETTE=['#45a3ff','#ff6b6b','#ffd166','#06d6a0','#c792ea','#ff9f1c','#00b
 const DOT_RADIUS=3.5, DOT_WEIGHT=1, RED='#ff0000', GREEN='#30e6b6';
 const CURVE_GAIN=1.25;
 
-/* Height-first fit config (onscreen map) */
+/* Height-first fit config */
 const MAP_MARGINS = { top:5, right:5, bottom:5, left:5 };
 const POSTER_MARGINS = { top:16, right:18, bottom:16, left:18 };
 const HEIGHT_FIT_SAFETY = 1;
 
-/* Poster knobs (kept aligned with prior) */
+/* Poster knobs (kept aligned) */
 const POSTER_W = 1080, POSTER_H = 1920;
 const POSTER_BG = '#0b1c3a';
 const POSTER_INSET_TOP_SAFE = 250;
@@ -205,6 +223,9 @@ const list=document.getElementById('cityList'), emptyListHint=document.getElemen
 const legendEl=document.getElementById('legend');
 const toastEl=document.getElementById('toast'); let toastTimer=null;
 function toast(t){toastEl.textContent=t;toastEl.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>toastEl.classList.remove('show'),1600);}
+
+/* Color picker els */
+const cp=document.getElementById('colorPicker'), cpSwatches=document.getElementById('cpSwatches'), cpCustom=document.getElementById('cpCustom'), cpClose=document.getElementById('cpClose');
 
 /* ===== App state ===== */
 let trips=[],activeTripId=null,tripCounter=0,cidCounter=0,selectedId=null;
@@ -337,16 +358,7 @@ document.getElementById('deleteTripBtn').addEventListener('click',()=>{
 
 /* ===== Color picker ===== */
 (function initColorPicker(){
-  const cp=document.createElement('div'); cp.id='colorPicker'; cp.className='cp-pop'; cp.hidden=true;
-  const row=document.createElement('div'); row.id='cpSwatches'; row.className='cp-row'; cp.appendChild(row);
-  const actions=document.createElement('div'); actions.className='cp-actions';
-  const label=document.createElement('label'); label.className='cp-chip';
-  label.innerHTML='<input type="color" id="cpCustom" aria-label="Custom color"/>Custom…';
-  const close=document.createElement('button'); close.id='cpClose'; close.className='cp-btn'; close.textContent='Done';
-  actions.appendChild(label); actions.appendChild(close); cp.appendChild(actions); document.body.appendChild(cp);
-
-  const cpSwatches=row, cpCustom=label.querySelector('#cpCustom'), cpClose=close;
-
+  cpSwatches.innerHTML='';
   PALETTE.forEach(hex=>{
     const b=document.createElement('button'); b.className='cp-swatch'; b.style.background=hex; b.setAttribute('aria-label',`Choose ${hex}`);
     b.addEventListener('click', ()=>applyTripColor(hex,true));
@@ -364,9 +376,9 @@ document.getElementById('deleteTripBtn').addEventListener('click',()=>{
   window.applyTripColor=function(hex,persist){ const t=getActiveTrip(); if(!t) return; t.color=hex; tripColorChip.style.background=hex; renderLegend(); updateMap(); if(persist) updateShareURL(); };
 })();
 
-/* ===== Autocomplete (delegated) ===== */
+/* ===== Autocomplete (delegated, capture-phase) ===== */
 let acTimer=null;
-let acItemsCache=[];
+let acItemsCache=[]; // keeps current result set for delegated handler
 const headerEl = document.querySelector('header');
 function headerHeight(){ return headerEl?.getBoundingClientRect().height || 0; }
 function ensureCityBoxVisible(instant=false){ const r=controls.getBoundingClientRect(); const topTarget=(window.scrollY+r.top)-headerHeight()-8; window.scrollTo({top:Math.max(0,topTarget),behavior:instant?'auto':'smooth'}); }
@@ -379,11 +391,13 @@ function handlePickIndex(idx){
   ac.classList.remove('show');
   input.value='';
   addCity(it);
+  // prevent the doc click from re-opening things; also move focus out
   input.blur();
 }
 function delegatedPickHandler(e){
   const item = e.target.closest('.ac-item');
   if(!item || !ac.contains(item)) return;
+  // capture before blur and outside-click handlers
   e.preventDefault();
   e.stopPropagation();
   const idx = +item.dataset.i;
@@ -479,8 +493,8 @@ function activateTripById(id){
   renderList(); updateMap(); updateEmptyState(); highlightLegendActive(); updateShareURL();
 }
 
-/* ===== Map / drawing (onscreen) ===== */
-let map, statesLayer, stateLayerByName={}, conusBounds=null, conusGeoJSON=null;
+/* ===== Map / drawing ===== */
+let map, statesLayer, stateLayerByName={}, conusBounds=null;
 let markerById={}, routeLines={}, unlockedStates=new Set();
 
 function initMap(){
@@ -490,25 +504,26 @@ function initMap(){
     boxZoom:false,keyboard:false,touchZoom:false,worldCopyJump:false,
     zoomSnap:0, zoomDelta:0.25
   });
+  map.createPane('statesPane');
+  map.createPane('routesPane');
+  map.createPane('markersPane');
 
   fetch("https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json")
     .then(r=>r.json()).then(geo=>{
       const conus=geo.features.filter(f=>!["Alaska","Hawaii","Puerto Rico"].includes(f.properties.name));
-      conusGeoJSON={type:"FeatureCollection",features:conus};
 
-      statesLayer=L.geoJSON(conusGeoJSON,{
-        style:(f)=> unlockedStates.has(f.properties.name)
-          ? {color:'#0b1c3a',weight:2,fillColor:'#ffffff',fillOpacity:1}
-          : {color:'#ffffff',weight:1,fillColor:'#0b1c3a',fillOpacity:1},
+      statesLayer=L.geoJSON({type:"FeatureCollection",features:conus},{
+        pane:'statesPane',
+        style:()=>({color:'#ffffff',weight:1,fillColor:'#0b1c3a',fillOpacity:1}),
         onEachFeature:(f,l)=>{stateLayerByName[f.properties.name]=l;}
       }).addTo(map);
 
-      const tmp=L.geoJSON(conusGeoJSON); conusBounds=tmp.getBounds();
+      const tmp=L.geoJSON({type:"FeatureCollection",features:conus}); conusBounds=tmp.getBounds();
 
       map.setMaxBounds(conusBounds.pad(0.02));
 
       fitUS_HeightFirst();
-      updateMap();
+      refreshAllStateStyles(); updateMap();
 
       const mapNode=document.getElementById('map');
       const ro=new ResizeObserver(()=>{ map.invalidateSize(false); fitUS_HeightFirst(); });
@@ -517,154 +532,177 @@ function initMap(){
     });
 }
 
-/* --- Height-first fit (onscreen) --- */
+/* --- Height-first fit (minimize top/bottom gaps) --- */
 function setZoomByFactor(f){ if(f>0 && f!==1){ map.setZoom(map.getZoom()+Math.log2(f),{animate:false}); } }
 function fitByHeight(bounds, m){
   if(!bounds || !map) return;
-  map.fitBounds(bounds,{paddingTopLeft:[m.left,m.top],paddingBottomRight:[m.right,m.bottom],animate:false});
+
+  map.fitBounds(bounds,{
+    paddingTopLeft:[m.left,m.top],
+    paddingBottomRight:[m.right,m.bottom],
+    animate:false
+  });
+
   const size=map.getSize();
   const targetH = Math.max(1, size.y - (m.top+m.bottom));
   const nw=bounds.getNorthWest(), sw=bounds.getSouthWest(), ne=bounds.getNorthEast();
   const pN=map.latLngToLayerPoint(nw), pS=map.latLngToLayerPoint(sw), pW=map.latLngToLayerPoint(nw), pE=map.latLngToLayerPoint(ne);
   const curH=Math.abs(pN.y - pS.y);
-  if(curH>0 && targetH>0){ setZoomByFactor((targetH/curH)*HEIGHT_FIT_SAFETY); }
+
+  if(curH>0 && targetH>0){
+    const factor=(targetH/curH)*HEIGHT_FIT_SAFETY;
+    setZoomByFactor(factor);
+  }
+
   const maxW = Math.max(1, size.x - (m.left+m.right));
   const curW=Math.abs(pE.x - pW.x);
   if(curW>maxW){ setZoomByFactor(maxW/curW); }
 }
 function fitUS_HeightFirst(){ fitByHeight(conusBounds, MAP_MARGINS); }
 
-/* ===== Poster snapshot/build (SVG pipeline, width-first fit; poster-only) ===== */
-function waitNextFrame(){ return new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))); }
+/* Styles */
+function applyStateStyle(name,selected){
+  const layer=stateLayerByName[name]; if(!layer) return;
+  if(selected){
+    layer.setStyle({fillColor:'#ffffff',fillOpacity:1,color:'#0b1c3a',weight:2});
+  }else{
+    layer.setStyle({fillColor:'#0b1c3a',fillOpacity:1,color:'#ffffff',weight:1});
+  }
+}
+function refreshAllStateStyles(){ Object.keys(stateLayerByName).forEach(n=>applyStateStyle(n,unlockedStates.has(n))); }
 
-/* helpers for the off-screen export map (do not touch onscreen map) */
-function setZoomByFactorOn(m, f){ if(m && f>0 && f!==1){ m.setZoom(m.getZoom()+Math.log2(f),{animate:false}); } }
-function fitByWidthOn(m, bounds, pad){
-  if(!m || !bounds) return;
-  // initial fit
-  m.fitBounds(bounds,{paddingTopLeft:[pad.left,pad.top],paddingBottomRight:[pad.right,pad.bottom],animate:false});
-  const size=m.getSize();
-  const targetW=Math.max(1, size.x-(pad.left+pad.right));
-  const targetH=Math.max(1, size.y-(pad.top+pad.bottom));
-
-  const nw=bounds.getNorthWest(), sw=bounds.getSouthWest(), ne=bounds.getNorthEast();
-  const pW=m.latLngToLayerPoint(nw), pE=m.latLngToLayerPoint(ne), pN=m.latLngToLayerPoint(nw), pS=m.latLngToLayerPoint(sw);
-
-  const curW=Math.abs(pE.x-pW.x);
-  const curH=Math.abs(pN.y-pS.y);
-
-  if(curW>0){ setZoomByFactorOn(m, targetW/curW); }
-  // if new height overflows, dial back
-  const pN2=m.latLngToLayerPoint(nw), pS2=m.latLngToLayerPoint(sw);
-  const newH=Math.abs(pN2.y-pS2.y);
-  if(newH>targetH){ setZoomByFactorOn(m, targetH/newH); }
+function markerStyle(isSelected){ return { radius:DOT_RADIUS, color:'#ffffff', weight:DOT_WEIGHT, fillColor:isSelected?GREEN:RED, fillOpacity:1, pane:'markersPane', className:'or-marker-glow', interactive:false }; }
+function updateSelectionVisuals(){
+  [...list.children].forEach(li=>{ if(!li.classList.contains('li')) return; +li.dataset.id===selectedId ? li.classList.add('li-selected') : li.classList.remove('li-selected');});
+  for(const id in markerById){ const m=markerById[id]; if(m){ m.setStyle(markerStyle(+id===selectedId)); } }
+}
+function updateCounter(){ mapCounter.textContent=`${unlockedStates.size}/50`; }
+function recomputeUnlockedFromCities(){
+  unlockedStates.clear();
+  trips.forEach(t=>t.cities.forEach(c=>{ const canon=canonicalStateName(c.stateFull||c.stateAbbr); if(canon && stateLayerByName[canon]) unlockedStates.add(canon); }));
+  updateCounter(); refreshAllStateStyles();
 }
 
-async function svgToCanvas(svgNode, scale=3){
-  const svg = svgNode.cloneNode(true);
-  svg.setAttribute('xmlns','http://www.w3.org/2000/svg');
-  svg.setAttribute('xmlns:xlink','http://www.w3.org/1999/xlink');
-  const w = +svg.getAttribute('width') || svg.clientWidth;
-  const h = +svg.getAttribute('height') || svg.clientHeight;
-  const blob = new Blob([new XMLSerializer().serializeToString(svg)], {type:'image/svg+xml;charset=utf-8'});
-  const url = URL.createObjectURL(blob);
-  const img = new Image(); img.decoding='async';
-  await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src=url; });
-  const canvas=document.createElement('canvas');
-  canvas.width=Math.max(1, Math.floor(w*scale));
-  canvas.height=Math.max(1, Math.floor(h*scale));
-  const ctx=canvas.getContext('2d');
-  ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  URL.revokeObjectURL(url);
-  return canvas;
+/* Curves */
+function _scaledDx(p1,p2){ const avg=((p1[0]+p2[0])/2)*Math.PI/180; return (p2[1]-p1[1])*Math.cos(avg); }
+function adaptiveTauFor(p1,p2){ const dx=Math.abs(_scaledDx(p1,p2)), dy=Math.abs(p2[0]-p1[0]), d=Math.hypot(dx,dy); const r=dx/(dx+dy+1e-9); let tau=0.62+(r-0.5)*0.36+Math.min(d/5,1)*0.16; return Math.max(0.5,Math.min(0.85,tau)); }
+function _controls(p0,p1,p2,p3,tau){
+  const dx10=_scaledDx(p0,p1), dx21=_scaledDx(p1,p2), dx32=_scaledDx(p2,p3);
+  const k=(tau/6)*CURVE_GAIN; const avg1=((p0[0]+p1[0])/2)*Math.PI/180, avg2=((p2[0]+p3[0])/2)*Math.PI/180;
+  const c1=[ p1[0]+k*(p2[0]-p0[0]),  p1[1]+k*((dx21+dx10)/(Math.cos(avg1)||1)) ];
+  // FIX: c2 should be anchored on p2 (was mistakenly using p1 for latitude)
+  const c2=[ p2[0]-k*(p3[0]-p1[0]),  p2[1]-k*((dx32+dx21)/(Math.cos(avg2)||1)) ];
+  return [c1,c2];
 }
+function buildSmoothPathAdaptive(points,{closed=false}={}){
+  if(points.length<2) return null;
+  const pts=points.slice();
+  if(closed){ pts.unshift(points[points.length-2]||points[0]); pts.push(points[1]||points[0]); }
+  else { pts.unshift(points[0]); pts.push(points[points.length-1]); }
+  const path=['M', points[0]];
+  for(let i=0;i<points.length-1;i++){
+    const p0=pts[i], p1=pts[i+1], p2=pts[i+2], p3=pts[i+3];
+    const tau=adaptiveTauFor(p1,p2);
+    const [c1,c2]=_controls(p0,p1,p2,p3,tau);
+    path.push('C', c1, c2, p2);
+  }
+  if(closed) path.push('Z');
+  return path;
+}
+function isClosed(points){ if(points.length<3) return false; const a=points[0], b=points[points.length-1]; return Math.hypot(a[0]-b[0],a[1]-b[1])<0.6; }
 
-async function snapshotMapForPoster(){
-  // same placement numbers as before; we only fix fitting/export quality
-  const cardX = 54, cardW = POSTER_W-108;
-  const cardY = POSTER_INSET_TOP_SAFE + 160;
-  const cardH = 420;
-
-  const snapW = Math.floor(cardW), snapH = Math.floor(cardH);
-
-  // Off-screen container
-  const off = document.createElement('div');
-  off.style.position='fixed';
-  off.style.left='-10000px';
-  off.style.top='0';
-  off.style.width = snapW+'px';
-  off.style.height = snapH+'px';
-  off.style.background='transparent';
-  document.body.appendChild(off);
-
-  // Minimal export-only map (vector overlay only)
-  const expMap=L.map(off,{
-    preferCanvas:false,
-    zoomControl:false,attributionControl:false,
-    dragging:false,scrollWheelZoom:false,doubleClickZoom:false,
-    boxZoom:false,keyboard:false,touchZoom:false,worldCopyJump:false,
-    zoomSnap:0, zoomDelta:0.25
-  });
-
-  // States layer (same styling rules)
-  const states=L.geoJSON(conusGeoJSON||{type:"FeatureCollection",features:[]},{
-    style:(f)=> unlockedStates.has(f.properties.name)
-      ? {color:'#0b1c3a',weight:2,fillColor:'#ffffff',fillOpacity:1}
-      : {color:'#ffffff',weight:1,fillColor:'#0b1c3a',fillOpacity:1}
-  }).addTo(expMap);
-
-  // Fit the US **by width** so it spans left→right nicely
-  const tmpBounds = conusBounds || states.getBounds();
-  fitByWidthOn(expMap, tmpBounds, POSTER_MARGINS);
-
-  // Draw order for poster only: ROUTES first, DOTS last (dots on top)
-  trips.forEach(t=>{
-    if(t.cities.length>1){
-      const pts=t.cities.map(c=>[c.lat,c.lon]);
-      const closed=(pts.length>=3 && Math.hypot(pts[0][0]-pts[pts.length-1][0],pts[0][1]-pts[pts.length-1][1])<0.6);
-      const path=(function(points,{closed=false}={}){
-        if(points.length<2) return null;
-        const pts2=points.slice();
-        if(closed){ pts2.unshift(points[points.length-2]||points[0]); pts2.push(points[1]||points[0]); }
-        else { pts2.unshift(points[0]); pts2.push(points[points.length-1]); }
-        const path=['M', points[0]];
-        for(let i=0;i<points.length-1;i++){
-          const p0=pts2[i], p1=pts2[i+1], p2=pts2[i+2], p3=pts2[i+3];
-          const avg=((p1[0]+p2[0])/2)*Math.PI/180;
-          const _sd=(a,b)=> (b[1]-a[1])*Math.cos(avg);
-          const dx10=_sd(p0,p1), dx21=_sd(p1,p2), dx32=_sd(p2,p3);
-          const k=(0.62/6)*CURVE_GAIN;
-          const c1=[ p1[0]+k*(p2[0]-p0[0]),  p1[1]+k*((dx21+dx10)/(Math.cos(avg)||1)) ];
-          const c2=[ p2[0]-k*(p3[0]-p1[0]),  p2[1]-k*((dx32+dx21)/(Math.cos(avg)||1)) ];
-          path.push('C', c1, c2, p2);
-        }
-        if(closed) path.push('Z');
-        return path;
-      })(pts,{closed});
-      if(path){ L.curve(path,{color:t.color,weight:3}).addTo(expMap); }
-    }
-  });
+function updateMap(){
+  if(!map) return;
+  for(const id in markerById){ if(markerById[id]) map.removeLayer(markerById[id]); }
+  markerById={};
+  Object.values(routeLines).forEach(l=>{ if(l) map.removeLayer(l); }); routeLines={};
 
   trips.forEach(t=>{
     t.cities.forEach(c=>{
-      L.circleMarker([c.lat,c.lon], { radius:DOT_RADIUS, color:'#ffffff', weight:DOT_WEIGHT, fillColor:RED, fillOpacity:1, interactive:false, className:'or-marker-glow' }).addTo(expMap);
+      markerById[c.id]=L.circleMarker([c.lat,c.lon], markerStyle(c.id===selectedId)).addTo(map);
     });
   });
 
-  expMap.invalidateSize(false);
-  await waitNextFrame();
+  trips.forEach(t=>{
+    if(t.cities.length>1){
+      const pts=t.cities.map(c=>[c.lat,c.lon]);
+      const closed=isClosed(pts);
+      const path=buildSmoothPathAdaptive(pts,{closed});
+      if(path){ routeLines[t.id]=L.curve(path,{pane:'routesPane',className:'route',color:t.color,weight:3}).addTo(map); }
+    }
+  });
 
-  // Grab the single overlay SVG and rasterize at high DPI
-  const svg = off.querySelector('.leaflet-overlay-pane svg');
-  const mapCanvas = await svgToCanvas(svg, 3);
-
-  expMap.remove();
-  off.remove();
-
-  return {canvas: mapCanvas, cardX, cardY, cardW, cardH};
+  fitUS_HeightFirst(); updateSelectionVisuals();
 }
 
+/* City add/remove */
+function addCity(item){
+  const t=getActiveTrip(); if(!t){toast('Create a trip first (tap +)');return;}
+  item.id=++cidCounter; t.cities.push(item);
+  recomputeUnlockedFromCities(); updateMap(); renderList(); updateSelectionVisuals(); updateEmptyState();
+  toast(`Added ${item.name}, ${item.stateAbbr}`);
+}
+function removeCityById(id){
+  const t=getActiveTrip(); if(!t) return;
+  const idx=t.cities.findIndex(c=>c.id===id); if(idx===-1) return;
+  const removed=t.cities[idx]; t.cities.splice(idx,1);
+  if(selectedId===id) selectedId=null;
+  recomputeUnlockedFromCities(); updateMap(); renderList(); updateSelectionVisuals(); updateEmptyState();
+  toast(`Removed ${removed.name}, ${removed.stateAbbr}`);
+}
+
+/* Serialize/share */
+function serializeState(){ return trips.map(t=>({n:t.name,color:t.color,c:t.cities.map(c=>({n:c.name,st:c.stateAbbr,lat:+c.lat.toFixed(5),lon:+c.lon.toFixed(5)}))})); }
+function deserializeState(obj){
+  trips=[]; activeTripId=null; tripCounter=0; cidCounter=0; selectedId=null;
+  (obj||[]).forEach(bundle=>{
+    const id=++tripCounter;
+    const t={id,name:bundle.n||`Trip ${id}`,color:bundle.color||PALETTE[(id-1)%PALETTE.length],cities:[]};
+    (bundle.c||[]).forEach(cc=>t.cities.push({id:++cidCounter,name:cc.n,stateAbbr:cc.st,stateFull:ABBR_TO_NAME[cc.st],lat:+cc.lat,lon:+cc.lon}));
+    trips.push(t); activeTripId=id;
+  });
+  refreshTripUI(); renderList(); recomputeUnlockedFromCities(); updateMap(); updateEmptyState();
+}
+function updateShareURL(){
+  const enc = new TextEncoder();
+  const serialized = JSON.stringify(serializeState());
+  const b64 = btoa(String.fromCharCode(...enc.encode(serialized)));
+  const url=new URL(location.href);
+  const newHash='s='+b64;
+  if(url.hash!==('#'+newHash)){
+    url.hash=newHash; history.replaceState(null,'',url.toString());
+  }
+  return url.toString();
+}
+
+/* ===== Poster snapshot/build ===== */
+async function snapshotMapForPoster(){
+  const mapEl=document.getElementById('map');
+  const original = { width: mapEl.style.width, height: mapEl.style.height, transform: mapEl.style.transform };
+
+  const cardX = 54, cardW = POSTER_W-108;
+  const cardY = POSTER_INSET_TOP_SAFE + 160;
+  const cardH = 420;
+  const snapW = Math.floor(cardW);
+  const snapH = Math.floor(cardH);
+
+  mapEl.style.transform = '';
+  mapEl.style.width = snapW+'px';
+  mapEl.style.height = snapH+'px';
+
+  map.invalidateSize();
+  if(conusBounds){ fitByHeight(conusBounds, POSTER_MARGINS); }
+
+  const canvas = await html2canvas(mapEl, {useCORS:true, backgroundColor:null, scale:2});
+
+  mapEl.style.width = original.width;
+  mapEl.style.height = original.height;
+  mapEl.style.transform = original.transform;
+  map.invalidateSize();
+  fitUS_HeightFirst();
+
+  return {canvas, cardX, cardY, cardW, cardH};
+}
 async function buildPosterCanvas(mapShot){
   const canvas=document.createElement('canvas'); canvas.width=POSTER_W; canvas.height=POSTER_H;
   const ctx=canvas.getContext('2d');
@@ -679,9 +717,6 @@ async function buildPosterCanvas(mapShot){
   drawW*=POSTER_MAP_SCALE; drawH*=POSTER_MAP_SCALE;
   const drawX=cardX + (cardW-drawW)/2 + POSTER_MAP_INSET_X;
   const drawY=cardY + (cardH-drawH)/2 + POSTER_MAP_INSET_Y;
-
-  ctx.imageSmoothingEnabled=true;
-  ctx.imageSmoothingQuality='high';
   ctx.drawImage(mapCanvas, drawX, drawY, drawW, drawH);
 
   return canvas;
