@@ -498,28 +498,33 @@ function _usPixelHeightAtZoom(bounds, z) {
 
 /* Append scale() AND translateX() to Leaflet's translate3d(...) so centering is preserved */
 const MAP_Y_NUDGE = -213; // pixels (try -10 to -30 until it feels right)
-
+const MAP_X_NUDGE   = -50;     // ⬅ try -8 to -18 for a subtle left shift
 function applyFineScale() {
   const pane = map?.getPanes()?.mapPane;
   if (!pane || !conusBounds) return;
 
-  const z = map.getZoom();
-  const cPx = map.project(conusBounds.getCenter(), z); // US center (for origin)
+  const z   = map.getZoom();
+  const cPx = map.project(conusBounds.getCenter(), z);   // US center in pane pixels
 
-  // keep Leaflet's translate3d(...) but remove old scale we added
-  const base = pane.style.transform || '';
-  const cleaned = base.replace(/\s+scale\([^)]+\)/, '').replace(/\s+translateY\([^)]+\)/, '');
+  // Keep Leaflet's translate3d(...) but strip our previous adjustments
+  const base    = pane.style.transform || '';
+  const cleaned = base
+    .replace(/\s+scale\([^)]+\)/, '')
+    .replace(/\s+translateX\([^)]+\)/, '')
+    .replace(/\s+translateY\([^)]+\)/, '');
 
-  // compute centered vertical offset + your manual nudge
-  const size = map.getSize();
-  const pNE = map.project(conusBounds.getNorthEast(), z);
-  const pSW = map.project(conusBounds.getSouthWest(), z);
-  const usHeight = Math.abs(pNE.y - pSW.y);
-  const dyCenter = (size.y - usHeight * MAP_FINE_SCALE) / 2; // perfect vertical center
-  const dy = dyCenter + MAP_Y_NUDGE;                          // apply nudge (negative = up)
+  // Perfect vertical centering, then apply your manual Y nudge
+  const size   = map.getSize();
+  const pNE    = map.project(conusBounds.getNorthEast(), z);
+  const pSW    = map.project(conusBounds.getSouthWest(), z);
+  const hUS    = Math.abs(pNE.y - pSW.y);
+  const dyCent = (size.y - hUS * MAP_FINE_SCALE) / 2;
+  const dy     = dyCent + MAP_Y_NUDGE;
 
-  pane.style.transformOrigin = `${cPx.x}px ${cPx.y}px`;       // scale around US center
-  pane.style.transform = `${cleaned} translateY(${dy}px) scale(${MAP_FINE_SCALE})`;
+  const dx     = MAP_X_NUDGE; // manual horizontal nudge (negative = left)
+
+  pane.style.transformOrigin = `${cPx.x}px ${cPx.y}px`;
+  pane.style.transform = `${cleaned} translateX(${dx}px) translateY(${dy}px) scale(${MAP_FINE_SCALE})`;
 }
 
 
@@ -759,6 +764,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
+
 
 
 
