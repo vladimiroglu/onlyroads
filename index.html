@@ -501,24 +501,17 @@ function applyFineScale() {
   const pane = map?.getPanes()?.mapPane;
   if (!pane || !conusBounds) return;
 
-  const base = pane.style.transform || '';                   // e.g. "translate3d(x, y, 0)"
-  const cleaned = base
-      .replace(/\s+scale\([^)]+\)/, '')                    // remove any previous scale
-      .replace(/\s+translateX\([^)]+\)/, '');              // remove any previous translateX we added
+  const z = map.getZoom();
+  // US center in *pane pixels* at current zoom
+  const cPx = map.project(conusBounds.getCenter(), z);
 
-  // compute horizontal center offset
-  const size = map.getSize();                              // map container size
-  const z = map.getZoom();                                 // current integer zoom
-  const ne = conusBounds.getNorthEast();
-  const sw = conusBounds.getSouthWest();
-  const pNE = map.project(ne, z);
-  const pSW = map.project(sw, z);
-  const usWidth = Math.abs(pNE.x - pSW.x);                 // width of the US in pixels at this zoom
-  const scaledWidth = usWidth * MAP_FINE_SCALE;
-  const dx = (size.x - scaledWidth) / 2;                   // center offset
+  // keep Leaflet's translate3d(...) but remove any old scale we added
+  const base = pane.style.transform || '';
+  const cleaned = base.replace(/\s+scale\([^)]+\)/, '');
 
-  pane.style.transformOrigin = 'center center';
-  pane.style.transform = `${cleaned} translateX(${dx}px) scale(${MAP_FINE_SCALE})`;
+  // scale around the US center so it stays visually centered
+  pane.style.transformOrigin = `${cPx.x}px ${cPx.y}px`;
+  pane.style.transform = `${cleaned} scale(${MAP_FINE_SCALE})`;
 }
 
 function autoFitUSHeight() {
@@ -757,5 +750,6 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
+
 
 
