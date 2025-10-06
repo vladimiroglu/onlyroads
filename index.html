@@ -70,7 +70,7 @@ body.exporting #fabAddTrip{visibility:hidden}
 /* City list */
 .list{display:none;margin-top:10px;border:1px dashed var(--panelBorder);border-radius:12px;padding:8px;min-height:60px;position:relative}
 .list.show{display:block}
-.li{display:flex;align-items:center;gap:10px;background:#102652;border:1px solid #233a6b;color:var(--ink);padding:10px 12px;border-radius:10px;margin:6px 0;cursor:grab}
+.li{display:flex;align-items:center;gap:10px;background:#102652;border:1px solid #233a6b;color:#var(--ink);padding:10px 12px;border-radius:10px;margin:6px 0;cursor:grab}
 .li .handle{font-size:18px;opacity:.8}
 .li .name{flex:1}
 .li .remove{background:transparent;border:none;color:#cdd6ff;font-size:18px;cursor:pointer}
@@ -107,21 +107,17 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 .cp-btn:hover,.cp-chip:hover{background:#21366a}
 
 /* Visual effects */
-/* coast glow */
 .or-states-glow path{
   filter:
     drop-shadow(0 0 2px rgba(255,255,255,.65))
     drop-shadow(0 0 6px rgba(255,255,255,.35))
     drop-shadow(0 0 12px rgba(255,255,255,.22));
 }
-/* pin glow */
 .or-marker-glow{ filter:url(#or-soft-glow); }
-/* inner shadow on visited states */
 .or-state-inner{ filter:url(#or-inner-shadow); }
 
-/* Mobile map should not inherit desktop fine-scale nudges */
 @media (max-width: 640px){
-  #map{aspect-ratio: 21/10;} /* a bit taller on mobile for comfort */
+  #map{aspect-ratio: 21/10;}
 }
 </style>
 </head>
@@ -200,7 +196,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant (single source of truth) ===== */
-const VERSION = '0.087';
+const VERSION = '0.088';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -219,20 +215,26 @@ const PALETTE=['#45a3ff','#ff6b6b','#ffd166','#06d6a0','#c792ea','#ff9f1c','#00b
 const DOT_RADIUS=3.5, DOT_WEIGHT=1, RED='#ff0000', GREEN='#30e6b6';
 const CURVE_GAIN=1.25;
 
-/* Poster map knobs (easy manual control) */
+/* Map fit tuning (live map) */
+const FIT_PAD_BASE_PX = 6;     // small edge padding
+const FIT_SHRINK_WIDE = 0.12;  // zoom-in for wide screens
+const FIT_SHRINK_TALL = 0.06;  // zoom-in for tall/narrow screens
+
+/* Poster map knobs */
 const POSTER_W = 1080, POSTER_H = 1920;
 const POSTER_BG = '#0b1c3a';
-const POSTER_INSET_TOP_SAFE = 250;   // keep empty for IG Story UI
+const POSTER_INSET_TOP_SAFE = 250;
 const POSTER_INSET_BOTTOM_SAFE = 250;
-const POSTER_MAP_SCALE = 1.00;       // global scale for poster map
-const POSTER_MAP_INSET_X = 0;        // nudge map image
+const POSTER_MAP_SCALE = 1.00;
+const POSTER_MAP_INSET_X = 0;
 const POSTER_MAP_INSET_Y = 0;
-const POSTER_FIT_PADDING = [10,10];  // Leaflet fitBounds padding for poster capture
+const POSTER_FIT_PADDING = [10,10];
+const POSTER_BOUNDS_SHRINK = 0.08; // modest zoom-in for poster
 
 /* Colors/typography used in poster */
 const CARD_BG = '#0f2550';
 const WATERMARK_TEXT = 'ONLYROADS';
-const WATERMARK_COLOR = 'rgba(255,255,255,0.1)'; // blends with bg like v0.071
+const WATERMARK_COLOR = 'rgba(255,255,255,0.1)';
 const posterFonts = {
   bigNum: '900 168px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif',
   labelBig: '900 64px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif',
@@ -296,9 +298,9 @@ document.addEventListener('click',e=>{
 document.getElementById('miSave').addEventListener('click', async ()=>{
   menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
   try{
-    document.body.classList.add('exporting'); // hide badges over map
+    document.body.classList.add('exporting');
     await new Promise(r=>requestAnimationFrame(r));
-    const mapShot = await snapshotMapForPoster(); // poster-sized map capture
+    const mapShot = await snapshotMapForPoster();
     document.body.classList.remove('exporting');
 
     const poster=await buildPosterCanvas(mapShot);
@@ -457,13 +459,11 @@ function initMap(){
     .then(r=>r.json()).then(geo=>{
       const conus=geo.features.filter(f=>!["Alaska","Hawaii","Puerto Rico"].includes(f.properties.name));
 
-      /* Coast glow layer */
       statesGlowLayer=L.geoJSON({type:"FeatureCollection",features:conus},{
         pane:'statesGlowPane',
         style:()=>({color:'#ffffff',weight:1,opacity:0.9,fillOpacity:0,className:'or-states-glow'}),
       }).addTo(map);
 
-      /* Main states */
       statesLayer=L.geoJSON({type:"FeatureCollection",features:conus},{
         pane:'statesPane',
         style:()=>({color:'#ffffff',weight:1,fillColor:'#0b1c3a',fillOpacity:1}),
@@ -486,17 +486,17 @@ function initMap(){
 
 function fitUS(){
   if(!conusBounds || !map) return;
-  // Responsive padding based on container aspect ratio
+
   const el=document.getElementById('map');
   const r=el.getBoundingClientRect();
   const ar=r.width/Math.max(1,r.height);
 
-  const base=12;
-  const pad = ar < 1.6 ? base*2 : base; // more padding on tall/narrow screens
+  // zoom in (negative pad) with slight variation by aspect ratio
+  const shrink = ar < 1.6 ? FIT_SHRINK_TALL : FIT_SHRINK_WIDE;
 
-  map.fitBounds(conusBounds,{
-    paddingTopLeft:[pad,pad],
-    paddingBottomRight:[pad,pad],
+  map.fitBounds(conusBounds.pad(-shrink),{
+    paddingTopLeft:[FIT_PAD_BASE_PX,FIT_PAD_BASE_PX],
+    paddingBottomRight:[FIT_PAD_BASE_PX,FIT_PAD_BASE_PX],
     animate:false
   });
 }
@@ -663,24 +663,26 @@ async function snapshotMapForPoster(){
     transform: mapEl.style.transform,
   };
 
-  // Compute a large, poster-friendly rectangle (full width, comfortable height)
-  const cardX = 54, cardW = POSTER_W-108; // side margins
-  const cardY = POSTER_INSET_TOP_SAFE + 160; // under the header
-  const cardH = 420; // map display height on poster
+  const cardX = 54, cardW = POSTER_W-108;
+  const cardY = POSTER_INSET_TOP_SAFE + 160;
+  const cardH = 420;
   const snapW = Math.floor(cardW);
   const snapH = Math.floor(cardH);
 
   // Temporarily resize DOM container to the poster card size
-  mapEl.style.transform = ''; // neutralize site nudges (none now, but safe)
+  mapEl.style.transform = '';
   mapEl.style.width = snapW+'px';
   mapEl.style.height = snapH+'px';
 
   map.invalidateSize();
   if(conusBounds){
-    map.fitBounds(conusBounds, { paddingTopLeft: POSTER_FIT_PADDING, paddingBottomRight: POSTER_FIT_PADDING, animate:false });
+    map.fitBounds(conusBounds.pad(-POSTER_BOUNDS_SHRINK), {
+      paddingTopLeft: POSTER_FIT_PADDING,
+      paddingBottomRight: POSTER_FIT_PADDING,
+      animate:false
+    });
   }
 
-  // Take the snapshot
   const canvas = await html2canvas(mapEl, {useCORS:true, backgroundColor:null, scale:2});
 
   // Restore
@@ -701,9 +703,9 @@ async function buildPosterCanvas(mapShot){
 
   const unlocked = unlockedStates.size || 0;
 
-  /* Header: STATES UNLOCKED (left) + count right */
+  /* Header */
   const leftPad=54;
-  const topPad=POSTER_INSET_TOP_SAFE - 86; // visually matches your screenshot
+  const topPad=POSTER_INSET_TOP_SAFE - 86;
   ctx.fillStyle='#eaf2ff'; ctx.textBaseline='alphabetic';
 
   ctx.font=posterFonts.labelBig;
@@ -713,24 +715,22 @@ async function buildPosterCanvas(mapShot){
   ctx.font=posterFonts.bigNum;
   const bigNum=String(unlocked);
   const bnW = ctx.measureText(bigNum).width;
-  const rightCountX = POSTER_W - (leftPad + 280); // align area on right
-  const baseY = topPad + 64 + 8; // baseline of second line
+  const rightCountX = POSTER_W - (leftPad + 280);
+  const baseY = topPad + 64 + 8;
   ctx.fillText(bigNum, rightCountX, baseY+78);
 
   ctx.font=posterFonts.labelBig;
   ctx.fillText('/ 50', rightCountX + bnW + 18, baseY+50);
 
-  /* Map area (no visual box; subtle shadow behind map area to ground it) */
+  /* Map area */
   const {canvas:mapCanvas, cardX, cardY, cardW, cardH} = mapShot;
 
-  // draw soft container shadow
   ctx.save();
   roundRect(ctx, cardX, cardY, cardW, cardH, 22);
   ctx.shadowColor='rgba(0,0,0,0.45)'; ctx.shadowBlur=38; ctx.shadowOffsetY=22;
-  ctx.fillStyle='rgba(0,0,0,0.18)'; ctx.fill(); // invisible fill to cast shadow
+  ctx.fillStyle='rgba(0,0,0,0.18)'; ctx.fill();
   ctx.restore();
 
-  // Contain-fit the captured map into card, then optional scale & nudge
   const innerW=cardW, innerH=cardH;
   const mapRatio=mapCanvas.width/mapCanvas.height;
   let drawW=innerW, drawH=innerW/mapRatio;
@@ -758,7 +758,7 @@ async function buildPosterCanvas(mapShot){
     ctx.fillStyle='#e6ecff'; ctx.fillText(`${formatMiles(row.miles)}: ${row.name}`, leftPad+colorBarW+16, y+8);
   });
 
-  /* Watermark (OnlyRoads) rotated on the right, subtle blend color */
+  /* Watermark */
   ctx.save();
   ctx.translate(POSTER_W-26, POSTER_H-120);
   ctx.rotate(-Math.PI/2);
@@ -767,7 +767,7 @@ async function buildPosterCanvas(mapShot){
   ctx.fillText(WATERMARK_TEXT,0,0);
   ctx.restore();
 
-  /* Bottom centered version label (exact style/placement) */
+  /* Bottom version label */
   ctx.save();
   ctx.textAlign='center';
   ctx.fillStyle='rgba(255,255,255,0.55)';
