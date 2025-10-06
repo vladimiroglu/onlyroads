@@ -17,7 +17,6 @@
   --ink:#e6ecff; --ink-dim:#c9d6ff;
   --panel:#0e2349; --panelBorder:#2a3c67;
   --accent:#45a3ff;
-  --watermark:#ffffff17;
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
@@ -38,7 +37,7 @@ header.is-hidden{transform:translateY(-100%)} header.force-show{transform:transl
 .map-wrap{position:relative}
 #map{width:100%;aspect-ratio:21/7;min-height:200px;border-radius:14px;border:1px solid #233a6b;background:#0e2349;margin:8px 0 6px;overflow:hidden;position:relative}
 #mapCounter{position:absolute;left:12px;bottom:12px;background:rgba(8,23,51,.88);color:#fff;border:1px solid #ffffff2d;padding:6px 10px;border-radius:10px;font:800 clamp(14px,3.8vw,18px)/1 Impact,system-ui,sans-serif;letter-spacing:.5px}
-#fabAddTrip{position:absolute;right:12px;bottom:12px;z-index:2;width:46px;height:46px;border-radius:14px;border:1px solid #284079;background:#16306a;color:#fff;font-size:24px;font-weight:700;display:grid;place-items:center;cursor:pointer}
+#fabAddTrip{position:absolute;right:12px;bottom:12px;z-index:9000;width:46px;height:46px;border-radius:14px;border:1px solid #284079;background:#16306a;color:#fff;font-size:24px;font-weight:700;display:grid;place-items:center;cursor:pointer;pointer-events:auto}
 #fabAddTrip:hover{background:#1a3a80}
 
 /* Hide badges while exporting poster */
@@ -178,7 +177,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.098';
+const VERSION = '0.100';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -202,22 +201,12 @@ const MAP_MARGINS = { top:5, right:5, bottom:5, left:5 };
 const POSTER_MARGINS = { top:16, right:18, bottom:16, left:18 };
 const HEIGHT_FIT_SAFETY = 1;
 
-/* Poster knobs (kept for now) */
+/* Poster knobs (kept aligned) */
 const POSTER_W = 1080, POSTER_H = 1920;
 const POSTER_BG = '#0b1c3a';
 const POSTER_INSET_TOP_SAFE = 250;
 const POSTER_MAP_SCALE = 1.00;
 const POSTER_MAP_INSET_X = 0, POSTER_MAP_INSET_Y = 0;
-
-const WATERMARK_TEXT = 'ONLYROADS';
-const WATERMARK_COLOR = 'rgba(255,255,255,0.1)';
-const posterFonts = {
-  bigNum: '900 168px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif',
-  labelBig: '900 64px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif',
-  tripsTitle: '900 54px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif',
-  text: '500 36px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif',
-  version: '500 28px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif'
-};
 
 const mapCounter=document.getElementById('mapCounter');
 const belowHint=document.getElementById('belowHint');
@@ -382,6 +371,7 @@ document.getElementById('deleteTripBtn').addEventListener('click',()=>{
   cpClose.addEventListener('click', closePopover);
   cpCustom.addEventListener('input', ()=> applyTripColor(cpCustom.value, true));
   document.addEventListener('click',(e)=>{ if(!cp.hidden && !cp.contains(e.target) && e.target!==tripColorBtn) closePopover(); });
+  document.addEventListener('keydown', (e)=>{ if(!cp.hidden && e.key==='Escape') closePopover();});
   window.addEventListener('resize', ()=>{ if(!cp.hidden) positionPopover(); });
   window.applyTripColor=function(hex,persist){ const t=getActiveTrip(); if(!t) return; t.color=hex; tripColorChip.style.background=hex; renderLegend(); updateMap(); if(persist) updateShareURL(); };
 })();
@@ -464,7 +454,7 @@ function renderList(){
   t.cities.forEach(c=>{
     const row=document.createElement('div'); row.className='li'; row.dataset.id=c.id;
     row.innerHTML=`<div class="handle">⋮⋮</div><div class="name">${c.name}, ${c.stateAbbr}</div><button class="remove">×</button>`;
-    row.querySelector('.remove').onclick=(ev)=>{ev.stopPropagation(); removeCityById(c.id);};
+    row.querySelector('.remove').onclick=(ev)=>{ev.stopPropagation(); removeCityById(c.id)};
     row.addEventListener('click',(ev)=>{ if(ev.target.closest('.remove'))return; selectedId=(selectedId===c.id?null:c.id); updateSelectionVisuals(); });
     if(selectedId===c.id) row.classList.add('li-selected');
     list.appendChild(row);
@@ -480,6 +470,7 @@ function renderLegend(){
     btn.className='item'; btn.type='button';
     btn.setAttribute('data-id', t.id);
     btn.setAttribute('aria-label', `Switch to ${t.name}`);
+    btn.setAttribute('aria-pressed', String(t.id===activeTripId));
     btn.innerHTML=`<span class="chip" style="background:${t.color}"></span><span>${t.name}</span>`;
     btn.addEventListener('click', ()=> activateTripById(t.id));
     btn.addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); activateTripById(t.id); }});
@@ -492,6 +483,7 @@ function highlightLegendActive(){
   [...legendEl.children].forEach(el=>{
     const isActive = +el.getAttribute('data-id') === activeTripId;
     el.classList.toggle('is-active', isActive);
+    el.setAttribute('aria-pressed', String(isActive));
   });
 }
 function activateTripById(id){
@@ -533,8 +525,10 @@ function initMap(){
       fitUS_HeightFirst();
       refreshAllStateStyles(); updateMap();
 
+      const mapNode=document.getElementById('map');
       const ro=new ResizeObserver(()=>{ map.invalidateSize(false); fitUS_HeightFirst(); });
-      ro.observe(document.getElementById('map'));
+      ro.observe(mapNode);
+      window.addEventListener('beforeunload', ()=> ro.disconnect(), {once:true});
     });
 }
 
@@ -561,9 +555,8 @@ function fitByHeight(bounds, m){
   }
 
   const maxW = Math.max(1, size.x - (m.left+m.right));
-  const pE2=map.latLngToLayerPoint(ne), pW2=map.latLngToLayerPoint(nw);
-  const w2=Math.abs(pE2.x - pW2.x);
-  if(w2>maxW){ setZoomByFactor(maxW/w2); }
+  const curW=Math.abs(pE.x - pW.x);
+  if(curW>maxW){ setZoomByFactor(maxW/curW); }
 }
 function fitUS_HeightFirst(){ fitByHeight(conusBounds, MAP_MARGINS); }
 
@@ -597,7 +590,8 @@ function _controls(p0,p1,p2,p3,tau){
   const dx10=_scaledDx(p0,p1), dx21=_scaledDx(p1,p2), dx32=_scaledDx(p2,p3);
   const k=(tau/6)*CURVE_GAIN; const avg1=((p0[0]+p1[0])/2)*Math.PI/180, avg2=((p2[0]+p3[0])/2)*Math.PI/180;
   const c1=[ p1[0]+k*(p2[0]-p0[0]),  p1[1]+k*((dx21+dx10)/(Math.cos(avg1)||1)) ];
-  const c2=[ p2[0]-k*(p3[0]-p1[0]),  p1[1]-k*((dx32+dx21)/(Math.cos(avg2)||1)) ];
+  // FIX: c2 should be anchored on p2 (was mistakenly using p1 for latitude)
+  const c2=[ p2[0]-k*(p3[0]-p1[0]),  p2[1]-k*((dx32+dx21)/(Math.cos(avg2)||1)) ];
   return [c1,c2];
 }
 function buildSmoothPathAdaptive(points,{closed=false}={}){
@@ -670,11 +664,18 @@ function deserializeState(obj){
   refreshTripUI(); renderList(); recomputeUnlockedFromCities(); updateMap(); updateEmptyState();
 }
 function updateShareURL(){
-  const b64=btoa(unescape(encodeURIComponent(JSON.stringify(serializeState()))));
-  const url=new URL(location.href); url.hash='s='+b64; history.replaceState(null,'',url.toString()); return url.toString();
+  const enc = new TextEncoder();
+  const serialized = JSON.stringify(serializeState());
+  const b64 = btoa(String.fromCharCode(...enc.encode(serialized)));
+  const url=new URL(location.href);
+  const newHash='s='+b64;
+  if(url.hash!==('#'+newHash)){
+    url.hash=newHash; history.replaceState(null,'',url.toString());
+  }
+  return url.toString();
 }
 
-/* ===== Poster snapshot/build (unchanged for now) ===== */
+/* ===== Poster snapshot/build ===== */
 async function snapshotMapForPoster(){
   const mapEl=document.getElementById('map');
   const original = { width: mapEl.style.width, height: mapEl.style.height, transform: mapEl.style.transform };
@@ -726,7 +727,13 @@ document.addEventListener('DOMContentLoaded', ()=>{
   initMap();
   updateEmptyState();
   const h=new URL(location.href).hash;
-  if(h.startsWith('#s=')){ try{ deserializeState(JSON.parse(decodeURIComponent(escape(atob(h.slice(3)))))); }catch(e){} }
+  if(h.startsWith('#s=')){
+    try{
+      const bin = atob(h.slice(3));
+      const arr = Uint8Array.from(bin, c => c.charCodeAt(0));
+      deserializeState(JSON.parse(new TextDecoder().decode(arr)));
+    }catch(e){}
+  }
 });
 </script>
 </body>
