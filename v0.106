@@ -9,6 +9,8 @@
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-curve"></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<!-- kept: present in earlier builds, harmless to load even if unused -->
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 
 <style>
 :root{
@@ -157,7 +159,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.103';
+const VERSION = '0.106';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -176,12 +178,12 @@ const PALETTE=['#45a3ff','#ff6b6b','#ffd166','#06d6a0','#c792ea','#ff9f1c','#00b
 const DOT_RADIUS=3.5, DOT_WEIGHT=1, RED='#ff0000', GREEN='#30e6b6';
 const CURVE_GAIN=1.25;
 
-/* Height-first fit config */
+/* Height-first fit config (onscreen map) */
 const MAP_MARGINS = { top:5, right:5, bottom:5, left:5 };
 const POSTER_MARGINS = { top:16, right:18, bottom:16, left:18 };
 const HEIGHT_FIT_SAFETY = 1;
 
-/* Poster knobs (map only — no box on poster) */
+/* Poster knobs (kept aligned with prior) */
 const POSTER_W = 1080, POSTER_H = 1920;
 const POSTER_BG = '#0b1c3a';
 const POSTER_INSET_TOP_SAFE = 250;
@@ -251,7 +253,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
   try{
     document.body.classList.add('exporting');
     await new Promise(r=>requestAnimationFrame(r));
-    const mapShot = await snapshotMapForPoster(); // SVG-based off-screen export
+    const mapShot = await snapshotMapForPoster();
     document.body.classList.remove('exporting');
     const poster=await buildPosterCanvas(mapShot);
     const a=document.createElement('a'); a.href=poster.toDataURL('image/png'); a.download=`onlyroads_poster_${Date.now()}.png`; a.click();
@@ -362,7 +364,7 @@ document.getElementById('deleteTripBtn').addEventListener('click',()=>{
   window.applyTripColor=function(hex,persist){ const t=getActiveTrip(); if(!t) return; t.color=hex; tripColorChip.style.background=hex; renderLegend(); updateMap(); if(persist) updateShareURL(); };
 })();
 
-/* ===== Autocomplete ===== */
+/* ===== Autocomplete (delegated) ===== */
 let acTimer=null;
 let acItemsCache=[];
 const headerEl = document.querySelector('header');
@@ -382,7 +384,8 @@ function handlePickIndex(idx){
 function delegatedPickHandler(e){
   const item = e.target.closest('.ac-item');
   if(!item || !ac.contains(item)) return;
-  e.preventDefault(); e.stopPropagation();
+  e.preventDefault();
+  e.stopPropagation();
   const idx = +item.dataset.i;
   handlePickIndex(idx);
 }
@@ -514,7 +517,7 @@ function initMap(){
     });
 }
 
-/* --- Fit helpers (onscreen and export) --- */
+/* --- Height-first fit (onscreen) --- */
 function setZoomByFactor(f){ if(f>0 && f!==1){ map.setZoom(map.getZoom()+Math.log2(f),{animate:false}); } }
 function fitByHeight(bounds, m){
   if(!bounds || !map) return;
@@ -531,130 +534,31 @@ function fitByHeight(bounds, m){
 }
 function fitUS_HeightFirst(){ fitByHeight(conusBounds, MAP_MARGINS); }
 
+/* ===== Poster snapshot/build (SVG pipeline, width-first fit; poster-only) ===== */
+function waitNextFrame(){ return new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))); }
+
+/* helpers for the off-screen export map (do not touch onscreen map) */
 function setZoomByFactorOn(m, f){ if(m && f>0 && f!==1){ m.setZoom(m.getZoom()+Math.log2(f),{animate:false}); } }
-function fitByHeightOn(m, bounds, pad){
+function fitByWidthOn(m, bounds, pad){
   if(!m || !bounds) return;
+  // initial fit
   m.fitBounds(bounds,{paddingTopLeft:[pad.left,pad.top],paddingBottomRight:[pad.right,pad.bottom],animate:false});
   const size=m.getSize();
+  const targetW=Math.max(1, size.x-(pad.left+pad.right));
   const targetH=Math.max(1, size.y-(pad.top+pad.bottom));
+
   const nw=bounds.getNorthWest(), sw=bounds.getSouthWest(), ne=bounds.getNorthEast();
-  const pN=m.latLngToLayerPoint(nw), pS=m.latLngToLayerPoint(sw), pW=m.latLngToLayerPoint(nw), pE=m.latLngToLayerPoint(ne);
-  const curH=Math.abs(pN.y-pS.y);
-  if(curH>0 && targetH>0){ setZoomByFactorOn(m,(targetH/curH)*HEIGHT_FIT_SAFETY); }
-  const maxW=Math.max(1,size.x-(pad.left+pad.right));
+  const pW=m.latLngToLayerPoint(nw), pE=m.latLngToLayerPoint(ne), pN=m.latLngToLayerPoint(nw), pS=m.latLngToLayerPoint(sw);
+
   const curW=Math.abs(pE.x-pW.x);
-  if(curW>maxW){ setZoomByFactorOn(m, maxW/curW); }
-}
+  const curH=Math.abs(pN.y-pS.y);
 
-/* Styles / markers */
-function markerStyle(isSelected){ return { radius:DOT_RADIUS, color:'#ffffff', weight:DOT_WEIGHT, fillColor:isSelected?GREEN:RED, fillOpacity:1, interactive:false }; }
-function updateSelectionVisuals(){
-  [...list.children].forEach(li=>{ if(!li.classList.contains('li')) return; +li.dataset.id===selectedId ? li.classList.add('li-selected') : li.classList.remove('li-selected');});
-  for(const id in markerById){ const m=markerById[id]; if(m){ m.setStyle(markerStyle(+id===selectedId)); } }
+  if(curW>0){ setZoomByFactorOn(m, targetW/curW); }
+  // if new height overflows, dial back
+  const pN2=m.latLngToLayerPoint(nw), pS2=m.latLngToLayerPoint(sw);
+  const newH=Math.abs(pN2.y-pS2.y);
+  if(newH>targetH){ setZoomByFactorOn(m, targetH/newH); }
 }
-function updateCounter(){ mapCounter.textContent=`${unlockedStates.size}/50`; }
-function recomputeUnlockedFromCities(){
-  unlockedStates.clear();
-  trips.forEach(t=>t.cities.forEach(c=>{ const canon=canonicalStateName(c.stateFull||c.stateAbbr); if(canon) unlockedStates.add(canon); }));
-  updateCounter();
-  if(statesLayer){ statesLayer.setStyle(f => unlockedStates.has(f.properties.name)
-    ? {color:'#0b1c3a',weight:2,fillColor:'#ffffff',fillOpacity:1}
-    : {color:'#ffffff',weight:1,fillColor:'#0b1c3a',fillOpacity:1}); }
-}
-
-/* Curves */
-function _scaledDx(p1,p2){ const avg=((p1[0]+p2[0])/2)*Math.PI/180; return (p2[1]-p1[1])*Math.cos(avg); }
-function adaptiveTauFor(p1,p2){ const dx=Math.abs(_scaledDx(p1,p2)), dy=Math.abs(p2[0]-p1[0]), d=Math.hypot(dx,dy); const r=dx/(dx+dy+1e-9); let tau=0.62+(r-0.5)*0.36+Math.min(d/5,1)*0.16; return Math.max(0.5,Math.min(0.85,tau)); }
-function _controls(p0,p1,p2,p3,tau){
-  const dx10=_scaledDx(p0,p1), dx21=_scaledDx(p1,p2), dx32=_scaledDx(p2,p3);
-  const k=(tau/6)*CURVE_GAIN; const avg1=((p0[0]+p1[0])/2)*Math.PI/180, avg2=((p2[0]+p3[0])/2)*Math.PI/180;
-  const c1=[ p1[0]+k*(p2[0]-p0[0]),  p1[1]+k*((dx21+dx10)/(Math.cos(avg1)||1)) ];
-  const c2=[ p2[0]-k*(p3[0]-p1[0]),  p2[1]-k*((dx32+dx21)/(Math.cos(avg2)||1)) ];
-  return [c1,c2];
-}
-function buildSmoothPathAdaptive(points,{closed=false}={}){
-  if(points.length<2) return null;
-  const pts=points.slice();
-  if(closed){ pts.unshift(points[points.length-2]||points[0]); pts.push(points[1]||points[0]); }
-  else { pts.unshift(points[0]); pts.push(points[points.length-1]); }
-  const path=['M', points[0]];
-  for(let i=0;i<points.length-1;i++){
-    const p0=pts[i], p1=pts[i+1], p2=pts[i+2], p3=pts[i+3];
-    const tau=adaptiveTauFor(p1,p2);
-    const [c1,c2]=_controls(p0,p1,p2,p3,tau);
-    path.push('C', c1, c2, p2);
-  }
-  if(closed) path.push('Z');
-  return path;
-}
-function isClosed(points){ if(points.length<3) return false; const a=points[0], b=points[points.length-1]; return Math.hypot(a[0]-b[0],a[1]-b[1])<0.6; }
-
-function updateMap(){
-  if(!map) return;
-  for(const id in markerById){ if(markerById[id]) map.removeLayer(markerById[id]); }
-  markerById={};
-  Object.values(routeLines).forEach(l=>{ if(l) map.removeLayer(l); }); routeLines={};
-
-  trips.forEach(t=>{
-    t.cities.forEach(c=>{
-      markerById[c.id]=L.circleMarker([c.lat,c.lon], markerStyle(c.id===selectedId)).addTo(map);
-    });
-  });
-
-  trips.forEach(t=>{
-    if(t.cities.length>1){
-      const pts=t.cities.map(c=>[c.lat,c.lon]);
-      const closed=isClosed(pts);
-      const path=buildSmoothPathAdaptive(pts,{closed});
-      if(path){ routeLines[t.id]=L.curve(path,{className:'route',color:t.color,weight:3}).addTo(map); }
-    }
-  });
-
-  fitUS_HeightFirst(); updateSelectionVisuals();
-}
-
-/* City add/remove */
-function addCity(item){
-  const t=getActiveTrip(); if(!t){toast('Create a trip first (tap +)');return;}
-  item.id=++cidCounter; t.cities.push(item);
-  recomputeUnlockedFromCities(); updateMap(); renderList(); updateSelectionVisuals(); updateEmptyState();
-  toast(`Added ${item.name}, ${item.stateAbbr}`);
-}
-function removeCityById(id){
-  const t=getActiveTrip(); if(!t) return;
-  const idx=t.cities.findIndex(c=>c.id===id); if(idx===-1) return;
-  const removed=t.cities[idx]; t.cities.splice(idx,1);
-  if(selectedId===id) selectedId=null;
-  recomputeUnlockedFromCities(); updateMap(); renderList(); updateSelectionVisuals(); updateEmptyState();
-  toast(`Removed ${removed.name}, ${removed.stateAbbr}`);
-}
-
-/* Serialize/share */
-function serializeState(){ return trips.map(t=>({n:t.name,color:t.color,c:t.cities.map(c=>({n:c.name,st:c.stateAbbr,lat:+c.lat.toFixed(5),lon:+c.lon.toFixed(5)}))})); }
-function deserializeState(obj){
-  trips=[]; activeTripId=null; tripCounter=0; cidCounter=0; selectedId=null;
-  (obj||[]).forEach(bundle=>{
-    const id=++tripCounter;
-    const t={id,name:bundle.n||`Trip ${id}`,color:bundle.color||PALETTE[(id-1)%PALETTE.length],cities:[]};
-    (bundle.c||[]).forEach(cc=>t.cities.push({id:++cidCounter,name:cc.n,stateAbbr:cc.st,stateFull:ABBR_TO_NAME[cc.st],lat:+cc.lat,lon:+cc.lon}));
-    trips.push(t); activeTripId=id;
-  });
-  refreshTripUI(); renderList(); recomputeUnlockedFromCities(); updateMap(); updateEmptyState();
-}
-function updateShareURL(){
-  const enc = new TextEncoder();
-  const serialized = JSON.stringify(serializeState());
-  const b64 = btoa(String.fromCharCode(...enc.encode(serialized)));
-  const url=new URL(location.href);
-  const newHash='s='+b64;
-  if(url.hash!==('#'+newHash)){
-    url.hash=newHash; history.replaceState(null,'',url.toString());
-  }
-  return url.toString();
-}
-
-/* ===== Poster snapshot/build (SVG pipeline, no box) ===== */
-function waitNextFrame(){ return new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))); }
 
 async function svgToCanvas(svgNode, scale=3){
   const svg = svgNode.cloneNode(true);
@@ -677,10 +581,11 @@ async function svgToCanvas(svgNode, scale=3){
 }
 
 async function snapshotMapForPoster(){
-  // Poster map slot (no surrounding card)
-  const cardX = 54, cardW = POSTER_W - 108;
-  const cardY = POSTER_INSET_TOP_SAFE;
-  const cardH = 560;
+  // same placement numbers as before; we only fix fitting/export quality
+  const cardX = 54, cardW = POSTER_W-108;
+  const cardY = POSTER_INSET_TOP_SAFE + 160;
+  const cardH = 420;
+
   const snapW = Math.floor(cardW), snapH = Math.floor(cardH);
 
   // Off-screen container
@@ -689,11 +594,11 @@ async function snapshotMapForPoster(){
   off.style.left='-10000px';
   off.style.top='0';
   off.style.width = snapW+'px';
-  off.style.height= snapH+'px';
-  off.style.background='transparent'; // override Leaflet default gray
+  off.style.height = snapH+'px';
+  off.style.background='transparent';
   document.body.appendChild(off);
 
-  // Minimal map; use default overlay pane so all vectors share ONE <svg>
+  // Minimal export-only map (vector overlay only)
   const expMap=L.map(off,{
     preferCanvas:false,
     zoomControl:false,attributionControl:false,
@@ -702,37 +607,55 @@ async function snapshotMapForPoster(){
     zoomSnap:0, zoomDelta:0.25
   });
 
-  // States (white for unlocked)
+  // States layer (same styling rules)
   const states=L.geoJSON(conusGeoJSON||{type:"FeatureCollection",features:[]},{
     style:(f)=> unlockedStates.has(f.properties.name)
       ? {color:'#0b1c3a',weight:2,fillColor:'#ffffff',fillOpacity:1}
       : {color:'#ffffff',weight:1,fillColor:'#0b1c3a',fillOpacity:1}
   }).addTo(expMap);
 
-  // Fit to CONUS
+  // Fit the US **by width** so it spans left→right nicely
   const tmpBounds = conusBounds || states.getBounds();
-  fitByHeightOn(expMap, tmpBounds, POSTER_MARGINS);
+  fitByWidthOn(expMap, tmpBounds, POSTER_MARGINS);
 
-  // Markers
-  trips.forEach(t=>{
-    t.cities.forEach(c=>{
-      L.circleMarker([c.lat,c.lon], markerStyle(c.id===selectedId)).addTo(expMap);
-    });
-  });
-  // Routes
+  // Draw order for poster only: ROUTES first, DOTS last (dots on top)
   trips.forEach(t=>{
     if(t.cities.length>1){
       const pts=t.cities.map(c=>[c.lat,c.lon]);
-      const closed=isClosed(pts);
-      const path=buildSmoothPathAdaptive(pts,{closed});
+      const closed=(pts.length>=3 && Math.hypot(pts[0][0]-pts[pts.length-1][0],pts[0][1]-pts[pts.length-1][1])<0.6);
+      const path=(function(points,{closed=false}={}){
+        if(points.length<2) return null;
+        const pts2=points.slice();
+        if(closed){ pts2.unshift(points[points.length-2]||points[0]); pts2.push(points[1]||points[0]); }
+        else { pts2.unshift(points[0]); pts2.push(points[points.length-1]); }
+        const path=['M', points[0]];
+        for(let i=0;i<points.length-1;i++){
+          const p0=pts2[i], p1=pts2[i+1], p2=pts2[i+2], p3=pts2[i+3];
+          const avg=((p1[0]+p2[0])/2)*Math.PI/180;
+          const _sd=(a,b)=> (b[1]-a[1])*Math.cos(avg);
+          const dx10=_sd(p0,p1), dx21=_sd(p1,p2), dx32=_sd(p2,p3);
+          const k=(0.62/6)*CURVE_GAIN;
+          const c1=[ p1[0]+k*(p2[0]-p0[0]),  p1[1]+k*((dx21+dx10)/(Math.cos(avg)||1)) ];
+          const c2=[ p2[0]-k*(p3[0]-p1[0]),  p2[1]-k*((dx32+dx21)/(Math.cos(avg)||1)) ];
+          path.push('C', c1, c2, p2);
+        }
+        if(closed) path.push('Z');
+        return path;
+      })(pts,{closed});
       if(path){ L.curve(path,{color:t.color,weight:3}).addTo(expMap); }
     }
+  });
+
+  trips.forEach(t=>{
+    t.cities.forEach(c=>{
+      L.circleMarker([c.lat,c.lon], { radius:DOT_RADIUS, color:'#ffffff', weight:DOT_WEIGHT, fillColor:RED, fillOpacity:1, interactive:false, className:'or-marker-glow' }).addTo(expMap);
+    });
   });
 
   expMap.invalidateSize(false);
   await waitNextFrame();
 
-  // Grab the single SVG from overlay pane
+  // Grab the single overlay SVG and rasterize at high DPI
   const svg = off.querySelector('.leaflet-overlay-pane svg');
   const mapCanvas = await svgToCanvas(svg, 3);
 
@@ -757,8 +680,8 @@ async function buildPosterCanvas(mapShot){
   const drawX=cardX + (cardW-drawW)/2 + POSTER_MAP_INSET_X;
   const drawY=cardY + (cardH-drawH)/2 + POSTER_MAP_INSET_Y;
 
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
+  ctx.imageSmoothingEnabled=true;
+  ctx.imageSmoothingQuality='high';
   ctx.drawImage(mapCanvas, drawX, drawY, drawW, drawH);
 
   return canvas;
