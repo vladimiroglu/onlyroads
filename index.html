@@ -43,7 +43,7 @@ header.is-hidden{transform:translateY(-100%)} header.force-show{transform:transl
 /* Hide badges while exporting poster */
 body.exporting #mapCounter,
 body.exporting #fabAddTrip{visibility:hidden}
-/* Also neutralize the fine-scale during export so the poster captures cleanly */
+/* Neutralize fine-scale during export so html2canvas captures cleanly */
 body.exporting #map .leaflet-map-pane{ transform:none !important; }
 
 /* Clickable hint */
@@ -127,8 +127,6 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
     transform-origin:left center;
   }
 }
-
-/* no CSS scaling of map panes — auto-centering is handled in JS */
 </style>
 </head>
 <body>
@@ -206,7 +204,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.077';
+const VERSION = '0.078';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -303,7 +301,7 @@ document.addEventListener('click',e=>{
 document.getElementById('miSave').addEventListener('click', async ()=>{
   menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
   try{
-    document.body.classList.add('exporting'); // this disables fine-scale via CSS
+    document.body.classList.add('exporting'); // disables fine-scale via CSS
     await new Promise(r=>requestAnimationFrame(r));
     const mapShot=await html2canvas(document.getElementById('map'),{useCORS:true,backgroundColor:null,scale:2});
     document.body.classList.remove('exporting');
@@ -449,15 +447,14 @@ function renderList(){
 let map, statesGlowLayer, statesLayer, stateLayerByName={}, conusBounds=null;
 let markerById={}, routeLines={}, unlockedStates=new Set();
 
-/* fine, continuous visual scale after Leaflet chooses the nearest integer zoom */
-const MAP_FINE_SCALE = 0.9; // <— slightly smaller than v0.076 (tweak 0.90–1.10)
+/* fine, continuous visual scale AFTER Leaflet chooses the nearest integer zoom */
+const MAP_FINE_SCALE = 0.90; // tweak 0.90–1.10; <1 smaller, >1 bigger
 
 function initMap(){
   map=L.map('map',{
     zoomControl:false,
     attributionControl:false,
     dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false
-    // (we keep default integer zoom; the fine scale below gives continuous control)
   });
   map.createPane('statesGlowPane');  // glow underneath
   map.createPane('statesPane');      // main fill/stroke
@@ -484,6 +481,9 @@ function initMap(){
       const tmp=L.geoJSON({type:"FeatureCollection",features:conus}); conusBounds=tmp.getBounds();
       autoFitUSHeight();   // auto center & height-fit after data loads
       refreshAllStateStyles(); updateMap();
+
+      /* Keep fine-scale applied whenever Leaflet updates its transform */
+      map.on('move zoom viewreset moveend zoomend', applyFineScale);
     });
 }
 
@@ -495,12 +495,17 @@ function _usPixelHeightAtZoom(bounds, z) {
   const sw = map.project(bounds.getSouthWest(), z);
   return Math.abs(ne.y - sw.y);
 }
-function applyFineScale(){
+
+/* Append scale() to Leaflet's translate3d(...) so centering is preserved */
+function applyFineScale() {
   const pane = map.getPanes()?.mapPane;
-  if(!pane) return;
+  if (!pane) return;
+  const base = pane.style.transform || '';                  // e.g. "translate3d(x,y,0)"
+  const cleaned = base.replace(/\s+scale\([^)]+\)/, '');    // remove our previous scale()
   pane.style.transformOrigin = 'center center';
-  pane.style.transform = `scale(${MAP_FINE_SCALE})`;
+  pane.style.transform = `${cleaned} scale(${MAP_FINE_SCALE})`;
 }
+
 function autoFitUSHeight() {
   if (!conusBounds || !map) return;
   map.invalidateSize(false);
@@ -519,7 +524,7 @@ function autoFitUSHeight() {
   const center = conusBounds.getCenter();
   map.setView(center, z, { animate:false });
 
-  // after Leaflet renders at nearest integer zoom, apply smooth visual scaling
+  // after Leaflet renders at nearest integer zoom, append our fine-scale
   requestAnimationFrame(applyFineScale);
 }
 window.addEventListener('resize', ()=>autoFitUSHeight(), {passive:true});
@@ -739,5 +744,3 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
-
-
