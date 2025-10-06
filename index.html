@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.114';
+const VERSION = '0.115';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -289,6 +289,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
       boxZoom:false,keyboard:false,touchZoom:false,worldCopyJump:false,
       zoomSnap:0, zoomDelta:0.25, preferCanvas:true, fadeAnimation:false, zoomAnimation:false
     });
+    posterMap.invalidateSize(false);
 
     // load states and draw
     const geo = await fetch("https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json").then(r=>r.json());
@@ -311,11 +312,9 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     }).addTo(posterMap);
 
     const conusBoundsPoster = statesLayerPoster.getBounds();
-    posterMap.fitBounds(conusBoundsPoster,{
-      paddingTopLeft:[POSTER_SIDE_MARGIN,0],
-      paddingBottomRight:[POSTER_SIDE_MARGIN,0],
-      animate:false
-    });
+
+    // width-first fit: make it touch left/right with ~35px safety
+    fitByWidthPoster(posterMap, conusBoundsPoster, {left:POSTER_SIDE_MARGIN, right:POSTER_SIDE_MARGIN, top:0, bottom:0});
 
     // routes (below markers)
     for(const t of trips){
@@ -342,20 +341,30 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     // let Canvas render flush
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
 
-    // pull the actual renderer's canvas safely (Canvas may not have getContainer())
+    // pull the actual renderer's canvas + translate offsets
     const activeRenderer = posterMap.getRenderer(statesLayerPoster) || posterRenderer;
     const src = (typeof activeRenderer.getContainer === 'function')
                   ? activeRenderer.getContainer()
                   : activeRenderer._container;
-
     if(!src){ throw new Error('Poster renderer canvas not found'); }
 
-    // copy into preview canvas with bg fill
+    const {tx,ty} = parseTranslate(src.style.transform);
+    // src is device-pixel sized; convert offsets to CSS pixels
+    const ratioX = src.width  / work.clientWidth;   // ≈ devicePixelRatio
+    const ratioY = src.height / work.clientHeight;
+
+    // compose onto the preview canvas at native poster size (1080×1920)
     const dst = overlay.canvas;
     const dctx = dst.getContext('2d');
     dctx.fillStyle='#0b1c3a';
     dctx.fillRect(0,0,dst.width,dst.height);
-    dctx.drawImage(src, 0, 0, src.width, src.height, 0, 0, dst.width, dst.height);
+    dctx.drawImage(
+      src,
+      -tx/ratioX,         // x offset in CSS px
+      -ty/ratioY,         // y offset in CSS px
+      src.width/ratioX,   // draw width in CSS px -> 1080
+      src.height/ratioY   // draw height in CSS px -> 1920
+    );
 
     // cleanup
     posterMap.remove(); work.remove();
@@ -364,6 +373,37 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     toast('Could not create poster');
   }
 });
+
+function parseTranslate(transformStr){
+  const s = transformStr || '';
+  const m3 = /translate3d\(\s*([-\d.]+)px\s*,\s*([-\d.]+)px/i.exec(s);
+  if(m3) return {tx:parseFloat(m3[1])||0, ty:parseFloat(m3[2])||0};
+  const m2 = /translate\(\s*([-\d.]+)px\s*,\s*([-\d.]+)px/i.exec(s);
+  if(m2) return {tx:parseFloat(m2[1])||0, ty:parseFloat(m2[2])||0};
+  return {tx:0, ty:0};
+}
+
+function fitByWidthPoster(m, bounds, pad){
+  const left=pad.left||0, right=pad.right||0, top=pad.top||0, bottom=pad.bottom||0;
+  m.fitBounds(bounds,{paddingTopLeft:[left,top], paddingBottomRight:[right,bottom], animate:false});
+
+  const size=m.getSize();
+  const targetW = Math.max(1, size.x - (left+right));
+  const nw=bounds.getNorthWest(), ne=bounds.getNorthEast(), sw=bounds.getSouthWest();
+  const pW=m.latLngToLayerPoint(nw), pE=m.latLngToLayerPoint(ne), pN=m.latLngToLayerPoint(nw), pS=m.latLngToLayerPoint(sw);
+  const curW=Math.abs(pE.x - pW.x);
+  if(curW>0){
+    const factor=targetW/curW;
+    if(factor>0 && Math.abs(factor-1)>1e-6) m.setZoom(m.getZoom()+Math.log2(factor),{animate:false});
+  }
+  // if we overflow height after width fit, back off a little
+  const targetH = Math.max(1, size.y - (top+bottom));
+  const curH=Math.abs(pN.y - pS.y);
+  if(curH>targetH){
+    const factor=targetH/curH;
+    if(factor>0 && Math.abs(factor-1)>1e-6) m.setZoom(m.getZoom()+Math.log2(factor),{animate:false});
+  }
+}
 
 function createPosterOverlay(){
   const el = document.createElement('div'); el.id='orPosterOverlay';
@@ -388,6 +428,20 @@ function createPosterOverlay(){
   card.append(top,stage); el.appendChild(card);
   return {el, canvas};
 }
+
+/* ===== Share & feedback (restored) ===== */
+document.getElementById('miShare').addEventListener('click', async ()=>{
+  menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
+  const url=updateShareURL();
+  try{
+    if(navigator.share){ await navigator.share({title:'OnlyRoads',url}); toast('Shared'); }
+    else { await navigator.clipboard.writeText(url); toast('Link copied'); }
+  }catch(e){}
+});
+document.getElementById('miFeedback').addEventListener('click', ()=>{
+  menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
+  location.href=`mailto:?subject=${encodeURIComponent('OnlyRoads feedback')}&body=${encodeURIComponent('Feedback:\n\n')}`;
+});
 
 /* ===== Trips UI ===== */
 function refreshTripUI(){
@@ -637,7 +691,7 @@ function initMap(){
     });
 }
 
-/* --- Height-first fit --- */
+/* --- Height-first fit (live map) --- */
 function setZoomByFactor(f){ if(f>0 && f!==1){ map.setZoom(map.getZoom()+Math.log2(f),{animate:false}); } }
 function fitByHeight(bounds, m){
   if(!bounds || !map) return;
