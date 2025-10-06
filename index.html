@@ -43,6 +43,8 @@ header.is-hidden{transform:translateY(-100%)} header.force-show{transform:transl
 /* Hide badges while exporting poster */
 body.exporting #mapCounter,
 body.exporting #fabAddTrip{visibility:hidden}
+/* Also neutralize the fine-scale during export so the poster captures cleanly */
+body.exporting #map .leaflet-map-pane{ transform:none !important; }
 
 /* Clickable hint */
 #belowHint{display:none;margin:8px 2px 12px;padding:16px 14px;border:2px dotted var(--panelBorder);border-radius:12px;background:transparent;color:var(--ink-dim);text-align:center;font-size:14px;letter-spacing:.2px;cursor:pointer;user-select:none}
@@ -108,7 +110,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 /* Desktop readability tweaks (keep mobile as-is) */
 @media (min-width:900px){
   .brand{
-    letter-spacing:1.2px;
+    letter-spacing:1.3px;
     font-stretch:condensed;
     transform:scaleX(.78);
     transform-origin:left center;
@@ -204,7 +206,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.076';
+const VERSION = '0.077';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -301,7 +303,7 @@ document.addEventListener('click',e=>{
 document.getElementById('miSave').addEventListener('click', async ()=>{
   menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
   try{
-    document.body.classList.add('exporting');
+    document.body.classList.add('exporting'); // this disables fine-scale via CSS
     await new Promise(r=>requestAnimationFrame(r));
     const mapShot=await html2canvas(document.getElementById('map'),{useCORS:true,backgroundColor:null,scale:2});
     document.body.classList.remove('exporting');
@@ -447,8 +449,16 @@ function renderList(){
 let map, statesGlowLayer, statesLayer, stateLayerByName={}, conusBounds=null;
 let markerById={}, routeLines={}, unlockedStates=new Set();
 
+/* fine, continuous visual scale after Leaflet chooses the nearest integer zoom */
+const MAP_FINE_SCALE = 0.96; // <— slightly smaller than v0.076 (tweak 0.90–1.10)
+
 function initMap(){
-  map=L.map('map',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false});
+  map=L.map('map',{
+    zoomControl:false,
+    attributionControl:false,
+    dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false
+    // (we keep default integer zoom; the fine scale below gives continuous control)
+  });
   map.createPane('statesGlowPane');  // glow underneath
   map.createPane('statesPane');      // main fill/stroke
   map.createPane('routesPane');
@@ -477,13 +487,19 @@ function initMap(){
     });
 }
 
-/* ==== Auto-fit by HEIGHT + auto-center (no CSS scaling) ==== */
-const AUTO_FIT = { OVERSCAN: 0.75, PAD: 20 }; // tweak if needed
+/* ==== Auto-fit by HEIGHT + auto-center ==== */
+const AUTO_FIT = { OVERSCAN: 1.06, PAD: 8 }; // tweak if needed
 
 function _usPixelHeightAtZoom(bounds, z) {
   const ne = map.project(bounds.getNorthEast(), z);
   const sw = map.project(bounds.getSouthWest(), z);
   return Math.abs(ne.y - sw.y);
+}
+function applyFineScale(){
+  const pane = map.getPanes()?.mapPane;
+  if(!pane) return;
+  pane.style.transformOrigin = 'center center';
+  pane.style.transform = `scale(${MAP_FINE_SCALE})`;
 }
 function autoFitUSHeight() {
   if (!conusBounds || !map) return;
@@ -502,6 +518,9 @@ function autoFitUSHeight() {
   const z = zMin;
   const center = conusBounds.getCenter();
   map.setView(center, z, { animate:false });
+
+  // after Leaflet renders at nearest integer zoom, apply smooth visual scaling
+  requestAnimationFrame(applyFineScale);
 }
 window.addEventListener('resize', ()=>autoFitUSHeight(), {passive:true});
 
@@ -629,7 +648,7 @@ function deserializeState(obj){
   trips=[]; activeTripId=null; tripCounter=0; cidCounter=0; selectedId=null;
   (obj||[]).forEach(bundle=>{
     const id=++tripCounter;
-    theTrip={id,name:bundle.n||`Trip ${id}`,color:bundle.color||PALETTE[(id-1)%PALETTE.length],cities:[]};
+    const theTrip={id,name:bundle.n||`Trip ${id}`,color:bundle.color||PALETTE[(id-1)%PALETTE.length],cities:[]};
     (bundle.c||[]).forEach(cc=>theTrip.cities.push({id:++cidCounter,name:cc.n,stateAbbr:cc.st,stateFull:ABBR_TO_NAME[cc.st],lat:+cc.lat,lon:+cc.lon}));
     trips.push(theTrip); activeTripId=id;
   });
@@ -720,16 +739,3 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
