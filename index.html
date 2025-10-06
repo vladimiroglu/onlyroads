@@ -478,7 +478,7 @@ function initMap(){
 }
 
 /* ==== Auto-fit by HEIGHT + auto-center (no CSS scaling) ==== */
-const AUTO_FIT = { OVERSCAN: 0.75, PAD: 20 }; // tweak if needed
+const AUTO_FIT = { OVERSCAN: 0.75, PAD: 10 }; // tweak if needed
 
 function _usPixelHeightAtZoom(bounds, z) {
   const ne = map.project(bounds.getNorthEast(), z);
@@ -720,6 +720,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
+
 
 
 
