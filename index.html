@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.113';
+const VERSION = '0.114';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -339,18 +339,25 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
       }
     }
 
-    // wait one frame so Canvas renderer paints
+    // let Canvas render flush
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
 
-    // copy canvas into the preview canvas, with background fill
-    const src = posterRenderer.getContainer(); // <canvas>
+    // pull the actual renderer's canvas safely (Canvas may not have getContainer())
+    const activeRenderer = posterMap.getRenderer(statesLayerPoster) || posterRenderer;
+    const src = (typeof activeRenderer.getContainer === 'function')
+                  ? activeRenderer.getContainer()
+                  : activeRenderer._container;
+
+    if(!src){ throw new Error('Poster renderer canvas not found'); }
+
+    // copy into preview canvas with bg fill
     const dst = overlay.canvas;
     const dctx = dst.getContext('2d');
     dctx.fillStyle='#0b1c3a';
     dctx.fillRect(0,0,dst.width,dst.height);
     dctx.drawImage(src, 0, 0, src.width, src.height, 0, 0, dst.width, dst.height);
 
-    // clean up offscreen map/container
+    // cleanup
     posterMap.remove(); work.remove();
   }catch(err){
     console.error(err);
