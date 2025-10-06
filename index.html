@@ -94,7 +94,7 @@ body.exporting #fabAddTrip{visibility:hidden}
 .toast.show{display:block}
 footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
-/* Visual effects (only marker glow remains) */
+/* Marker glow */
 .or-marker-glow{ filter:url(#or-soft-glow); }
 
 @media (max-width: 640px){
@@ -103,7 +103,6 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 </style>
 </head>
 <body>
-<!-- SVG filters: keep only soft glow for markers -->
 <svg width="0" height="0" style="position:absolute;left:-9999px;top:-9999px" aria-hidden="true" focusable="false">
   <defs>
     <filter id="or-soft-glow" x="-50%" y="-50%" width="200%" height="200%">
@@ -157,7 +156,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.103';
+const VERSION = '0.104';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -185,6 +184,10 @@ const HEIGHT_FIT_SAFETY = 1;
 const POSTER_W = 1080, POSTER_H = 1920;
 const POSTER_BG = '#0b1c3a';
 const POSTER_INSET_TOP_SAFE = 250;
+/* ~35px safety margins left/right on poster */
+const POSTER_SIDE_MARGIN = 35;
+
+/* Map scale & offsets (kept for tweaks if needed) */
 const POSTER_MAP_SCALE = 1.00;
 const POSTER_MAP_INSET_X = 0, POSTER_MAP_INSET_Y = 0;
 
@@ -228,8 +231,7 @@ function positionMenu(){
   const margin=8;
   const left=Math.min(Math.max(8, r.right - menu.offsetWidth), window.innerWidth - menu.offsetWidth - 8);
   const top=Math.min(r.bottom + margin, window.innerHeight - menu.offsetHeight - 8);
-  menu.style.left = `${left}px`;
-  menu.style.top  = `${top}px`;
+  menu.style.left = `${left}px`;  menu.style.top  = `${top}px`;
 }
 kebabBtn.addEventListener('click',(e)=>{
   e.stopPropagation();
@@ -424,58 +426,6 @@ if (window.visualViewport) {
 }
 document.addEventListener('click',e=>{ if(!ac.contains(e.target)&&e.target!==input) ac.classList.remove('show'); });
 
-/* ===== Sortable list ===== */
-new Sortable(list,{handle:'.li',animation:150,
-  onChoose:e=>{selectedId=+e.item.dataset.id;updateSelectionVisuals();},
-  onEnd:()=>{const t=getActiveTrip();if(!t)return;const ids=[...list.children].filter(n=>n.classList.contains('li')).map(li=>+li.dataset.id);t.cities.sort((a,b)=>ids.indexOf(a.id)-ids.indexOf(b.id));updateMap();}
-});
-function renderList(){
-  list.querySelectorAll('.li').forEach(n=>n.remove());
-  const t=getActiveTrip(); if(!t){emptyListHint.style.display='none';return;}
-  if(t.cities.length===0){emptyListHint.style.display='grid'; emptyListHint.textContent='Add cities using the box above';}
-  else emptyListHint.style.display='none';
-  t.cities.forEach(c=>{
-    const row=document.createElement('div'); row.className='li'; row.dataset.id=c.id;
-    row.innerHTML=`<div class="handle">⋮⋮</div><div class="name">${c.name}, ${c.stateAbbr}</div><button class="remove">×</button>`;
-    row.querySelector('.remove').onclick=(ev)=>{ev.stopPropagation(); removeCityById(c.id)};
-    row.addEventListener('click',(ev)=>{ if(ev.target.closest('.remove'))return; selectedId=(selectedId===c.id?null:c.id); updateSelectionVisuals(); });
-    if(selectedId===c.id) row.classList.add('li-selected');
-    list.appendChild(row);
-  });
-}
-
-/* ===== Legend helpers ===== */
-function renderLegend(){
-  legendEl.innerHTML='';
-  if(!trips.length){ legendEl.classList.remove('show'); return; }
-  trips.forEach(t=>{
-    const btn=document.createElement('button');
-    btn.className='item'; btn.type='button';
-    btn.setAttribute('data-id', t.id);
-    btn.setAttribute('aria-label', `Switch to ${t.name}`);
-    btn.setAttribute('aria-pressed', String(t.id===activeTripId));
-    btn.innerHTML=`<span class="chip" style="background:${t.color}"></span><span>${t.name}</span>`;
-    btn.addEventListener('click', ()=> activateTripById(t.id));
-    btn.addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); activateTripById(t.id); }});
-    legendEl.appendChild(btn);
-  });
-  legendEl.classList.add('show');
-  highlightLegendActive();
-}
-function highlightLegendActive(){
-  [...legendEl.children].forEach(el=>{
-    const isActive = +el.getAttribute('data-id') === activeTripId;
-    el.classList.toggle('is-active', isActive);
-    el.setAttribute('aria-pressed', String(isActive));
-  });
-}
-function activateTripById(id){
-  if(activeTripId === id) return;
-  activeTripId = id;
-  for(const opt of tripSelect.options){ opt.selected = (+opt.value === id); }
-  renderList(); updateMap(); updateEmptyState(); highlightLegendActive(); updateShareURL();
-}
-
 /* ===== Map / drawing (onscreen) ===== */
 let map, statesLayer, stateLayerByName={}, conusBounds=null, conusGeoJSON=null;
 let markerById={}, routeLines={}, unlockedStates=new Set();
@@ -514,7 +464,7 @@ function initMap(){
     });
 }
 
-/* --- Fit helpers (onscreen and export) --- */
+/* --- Fit helpers --- */
 function setZoomByFactor(f){ if(f>0 && f!==1){ map.setZoom(map.getZoom()+Math.log2(f),{animate:false}); } }
 function fitByHeight(bounds, m){
   if(!bounds || !map) return;
@@ -531,6 +481,7 @@ function fitByHeight(bounds, m){
 }
 function fitUS_HeightFirst(){ fitByHeight(conusBounds, MAP_MARGINS); }
 
+/* Export-map fit helpers */
 function setZoomByFactorOn(m, f){ if(m && f>0 && f!==1){ m.setZoom(m.getZoom()+Math.log2(f),{animate:false}); } }
 function fitByHeightOn(m, bounds, pad){
   if(!m || !bounds) return;
@@ -547,7 +498,7 @@ function fitByHeightOn(m, bounds, pad){
 }
 
 /* Styles / markers */
-function markerStyle(isSelected){ return { radius:DOT_RADIUS, color:'#ffffff', weight:DOT_WEIGHT, fillColor:isSelected?GREEN:RED, fillOpacity:1, interactive:false }; }
+function markerStyle(isSelected){ return { radius:DOT_RADIUS, color:'#ffffff', weight:DOT_WEIGHT, fillColor:isSelected?GREEN:RED, fillOpacity:1, interactive:false, className:'or-marker-glow' }; }
 function updateSelectionVisuals(){
   [...list.children].forEach(li=>{ if(!li.classList.contains('li')) return; +li.dataset.id===selectedId ? li.classList.add('li-selected') : li.classList.remove('li-selected');});
   for(const id in markerById){ const m=markerById[id]; if(m){ m.setStyle(markerStyle(+id===selectedId)); } }
@@ -589,18 +540,14 @@ function buildSmoothPathAdaptive(points,{closed=false}={}){
 }
 function isClosed(points){ if(points.length<3) return false; const a=points[0], b=points[points.length-1]; return Math.hypot(a[0]-b[0],a[1]-b[1])<0.6; }
 
+/* Render order fix: draw routes first, then markers (so dots sit on top). */
 function updateMap(){
   if(!map) return;
   for(const id in markerById){ if(markerById[id]) map.removeLayer(markerById[id]); }
   markerById={};
   Object.values(routeLines).forEach(l=>{ if(l) map.removeLayer(l); }); routeLines={};
 
-  trips.forEach(t=>{
-    t.cities.forEach(c=>{
-      markerById[c.id]=L.circleMarker([c.lat,c.lon], markerStyle(c.id===selectedId)).addTo(map);
-    });
-  });
-
+  /* Routes first */
   trips.forEach(t=>{
     if(t.cities.length>1){
       const pts=t.cities.map(c=>[c.lat,c.lon]);
@@ -608,6 +555,13 @@ function updateMap(){
       const path=buildSmoothPathAdaptive(pts,{closed});
       if(path){ routeLines[t.id]=L.curve(path,{className:'route',color:t.color,weight:3}).addTo(map); }
     }
+  });
+
+  /* Then markers (above lines) */
+  trips.forEach(t=>{
+    t.cities.forEach(c=>{
+      markerById[c.id]=L.circleMarker([c.lat,c.lon], markerStyle(c.id===selectedId)).addTo(map);
+    });
   });
 
   fitUS_HeightFirst(); updateSelectionVisuals();
@@ -677,10 +631,12 @@ async function svgToCanvas(svgNode, scale=3){
 }
 
 async function snapshotMapForPoster(){
-  // Poster map slot (no surrounding card)
-  const cardX = 54, cardW = POSTER_W - 108;
+  /* Wider poster map: ~35px side margins */
+  const cardX = POSTER_SIDE_MARGIN;
+  const cardW = POSTER_W - POSTER_SIDE_MARGIN*2;
   const cardY = POSTER_INSET_TOP_SAFE;
-  const cardH = 560;
+  const cardH = 720; // taller slot so the map can breathe vertically
+
   const snapW = Math.floor(cardW), snapH = Math.floor(cardH);
 
   // Off-screen container
@@ -690,10 +646,10 @@ async function snapshotMapForPoster(){
   off.style.top='0';
   off.style.width = snapW+'px';
   off.style.height= snapH+'px';
-  off.style.background='transparent'; // override Leaflet default gray
+  off.style.background='transparent';
   document.body.appendChild(off);
 
-  // Minimal map; use default overlay pane so all vectors share ONE <svg>
+  // Minimal map
   const expMap=L.map(off,{
     preferCanvas:false,
     zoomControl:false,attributionControl:false,
@@ -702,24 +658,18 @@ async function snapshotMapForPoster(){
     zoomSnap:0, zoomDelta:0.25
   });
 
-  // States (white for unlocked)
+  // States
   const states=L.geoJSON(conusGeoJSON||{type:"FeatureCollection",features:[]},{
     style:(f)=> unlockedStates.has(f.properties.name)
       ? {color:'#0b1c3a',weight:2,fillColor:'#ffffff',fillOpacity:1}
       : {color:'#ffffff',weight:1,fillColor:'#0b1c3a',fillOpacity:1}
   }).addTo(expMap);
 
-  // Fit to CONUS
+  // Fit
   const tmpBounds = conusBounds || states.getBounds();
   fitByHeightOn(expMap, tmpBounds, POSTER_MARGINS);
 
-  // Markers
-  trips.forEach(t=>{
-    t.cities.forEach(c=>{
-      L.circleMarker([c.lat,c.lon], markerStyle(c.id===selectedId)).addTo(expMap);
-    });
-  });
-  // Routes
+  // Routes FIRST (so markers will render on top)
   trips.forEach(t=>{
     if(t.cities.length>1){
       const pts=t.cities.map(c=>[c.lat,c.lon]);
@@ -729,10 +679,16 @@ async function snapshotMapForPoster(){
     }
   });
 
+  // Markers AFTER lines (on top)
+  trips.forEach(t=>{
+    t.cities.forEach(c=>{
+      L.circleMarker([c.lat,c.lon], { radius:DOT_RADIUS, color:'#ffffff', weight:DOT_WEIGHT, fillColor:RED, fillOpacity:1, interactive:false, className:'or-marker-glow' }).addTo(expMap);
+    });
+  });
+
   expMap.invalidateSize(false);
   await waitNextFrame();
 
-  // Grab the single SVG from overlay pane
   const svg = off.querySelector('.leaflet-overlay-pane svg');
   const mapCanvas = await svgToCanvas(svg, 3);
 
@@ -754,6 +710,7 @@ async function buildPosterCanvas(mapShot){
   let drawW=innerW, drawH=innerW/mapRatio;
   if(drawH>innerH){ drawH=innerH; drawW=innerH*mapRatio; }
   drawW*=POSTER_MAP_SCALE; drawH*=POSTER_MAP_SCALE;
+
   const drawX=cardX + (cardW-drawW)/2 + POSTER_MAP_INSET_X;
   const drawY=cardY + (cardH-drawH)/2 + POSTER_MAP_INSET_Y;
 
