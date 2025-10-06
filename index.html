@@ -10,7 +10,7 @@
 <script src="https://unpkg.com/leaflet-curve"></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-
+  
 <style>
 :root{
   --bg:#0b1c3a; --header:#081733;
@@ -497,22 +497,31 @@ function _usPixelHeightAtZoom(bounds, z) {
 }
 
 /* Append scale() AND translateX() to Leaflet's translate3d(...) so centering is preserved */
+const MAP_Y_NUDGE = -20; // pixels (try -10 to -30 until it feels right)
+
 function applyFineScale() {
   const pane = map?.getPanes()?.mapPane;
   if (!pane || !conusBounds) return;
 
   const z = map.getZoom();
-  // US center in *pane pixels* at current zoom
-  const cPx = map.project(conusBounds.getCenter(), z);
+  const cPx = map.project(conusBounds.getCenter(), z); // US center (for origin)
 
-  // keep Leaflet's translate3d(...) but remove any old scale we added
+  // keep Leaflet's translate3d(...) but remove old scale we added
   const base = pane.style.transform || '';
-  const cleaned = base.replace(/\s+scale\([^)]+\)/, '');
+  const cleaned = base.replace(/\s+scale\([^)]+\)/, '').replace(/\s+translateY\([^)]+\)/, '');
 
-  // scale around the US center so it stays visually centered
-  pane.style.transformOrigin = `${cPx.x}px ${cPx.y}px`;
-  pane.style.transform = `${cleaned} scale(${MAP_FINE_SCALE})`;
+  // compute centered vertical offset + your manual nudge
+  const size = map.getSize();
+  const pNE = map.project(conusBounds.getNorthEast(), z);
+  const pSW = map.project(conusBounds.getSouthWest(), z);
+  const usHeight = Math.abs(pNE.y - pSW.y);
+  const dyCenter = (size.y - usHeight * MAP_FINE_SCALE) / 2; // perfect vertical center
+  const dy = dyCenter + MAP_Y_NUDGE;                          // apply nudge (negative = up)
+
+  pane.style.transformOrigin = `${cPx.x}px ${cPx.y}px`;       // scale around US center
+  pane.style.transform = `${cleaned} translateY(${dy}px) scale(${MAP_FINE_SCALE})`;
 }
+
 
 function autoFitUSHeight() {
   if (!conusBounds || !map) return;
@@ -750,6 +759,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
+
 
 
 
