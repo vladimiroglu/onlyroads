@@ -168,7 +168,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.093';
+const VERSION = '0.094';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -187,12 +187,12 @@ const PALETTE=['#45a3ff','#ff6b6b','#ffd166','#06d6a0','#c792ea','#ff9f1c','#00b
 const DOT_RADIUS=3.5, DOT_WEIGHT=1, RED='#ff0000', GREEN='#30e6b6';
 const CURVE_GAIN=1.25;
 
-/* Height-first fit config */
+/* Height-first fit config (your preferred values) */
 const MAP_MARGINS = { top:5, right:5, bottom:5, left:5 };
-const POSTER_MARGINS = { top:16, right:18, bottom:16, left:18 };
-const HEIGHT_FIT_SAFETY = 1; // tiny deflate so edges breathe
+const POSTER_MARGINS = { top:16, right:18, bottom:16, left:18 }; // poster left as-is for now
+const HEIGHT_FIT_SAFETY = 1;
 
-/* Poster map knobs */
+/* Poster map knobs (poster revamp later) */
 const POSTER_W = 1080, POSTER_H = 1920;
 const POSTER_BG = '#0b1c3a';
 const POSTER_INSET_TOP_SAFE = 250;
@@ -302,22 +302,46 @@ function updateEmptyState(){
 
 /* Create / rename / delete trips */
 function createTripFlow(){
-  const raw=prompt('Name your new trip:', '');
-  if(raw===null) return;
-  const name=(raw||'').trim();
-  addTrip(name||undefined, PALETTE[(tripCounter)%PALETTE.length]);
+  try{
+    const raw=prompt('Name your new trip:', '');
+    if(raw===null) return;
+    const name=(raw||'').trim();
+    addTrip(name); // robust add (handles empty name inside)
+  }catch(e){
+    console.error('createTripFlow error:', e);
+    toast('Could not create trip');
+  }
 }
-function addTrip(name,color){
+function addTrip(name){
   const id=++tripCounter;
-  trips.push({id,name:name||`Trip ${id}`,color:color||PALETTE[(id-1)%PALETTE.length],cities:[]});
-  activeTripId=id; refreshTripUI(); renderList(); recomputeUnlockedFromCities(); updateMap(); updateEmptyState(); toast(`Created trip “${getActiveTrip().name}”`);
+  const t={
+    id,
+    name: name || `Trip ${id}`,
+    color: PALETTE[(id-1)%PALETTE.length],
+    cities:[]
+  };
+  trips.push(t);
+  activeTripId=id;
+
+  // Refresh UI deterministically
+  refreshTripUI();
+  renderList();
+  recomputeUnlockedFromCities();
+  updateMap();
+  updateEmptyState();
+  updateShareURL();
+
+  toast(`Created trip “${t.name}”`);
 }
 document.getElementById('fabAddTrip').addEventListener('click', createTripFlow);
 belowHint.addEventListener('click', createTripFlow);
 belowHint.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' ') { e.preventDefault(); createTripFlow(); } });
+
 document.getElementById('renameTripBtn').addEventListener('click',()=>{
   const t=getActiveTrip(); if(!t){toast('No trip');return;}
-  const raw=prompt('Rename trip:', t.name||''); if(raw===null)return; const n=raw.trim(); if(n){t.name=n; refreshTripUI(); updateShareURL();}
+  const raw=prompt('Rename trip:', t.name||''); if(raw===null)return;
+  const n=(raw||'').trim();
+  if(n){t.name=n; refreshTripUI(); updateShareURL();}
 });
 document.getElementById('deleteTripBtn').addEventListener('click',()=>{
   const t=getActiveTrip(); if(!t) return; if(!confirm(`Delete “${t.name}”?`)) return;
@@ -456,11 +480,10 @@ function fitByHeight(bounds, m){
   const nw=bounds.getNorthWest(), sw=bounds.getSouthWest(), ne=bounds.getNorthEast();
   const pN=map.latLngToLayerPoint(nw), pS=map.latLngToLayerPoint(sw), pW=map.latLngToLayerPoint(nw), pE=map.latLngToLayerPoint(ne);
   const curH=Math.abs(pN.y - pS.y);
-  const curW=Math.abs(pE.x - pW.x);
 
-  // 3) Zoom by exact height, then tiny deflate for safety
+  // 3) Zoom by exact height (ignore sides), with your safety = 1
   if(curH>0 && targetH>0){
-    const factor=(targetH/curH)*HEIGHT_FIT_SAFETY;
+    const factor=(targetH/curH)*HEIGHT_FIT_SAFETY; // = 1
     setZoomByFactor(factor);
   }
 
@@ -566,7 +589,7 @@ function updateShareURL(){
   const url=new URL(location.href); url.hash='s='+b64; history.replaceState(null,'',url.toString()); return url.toString();
 }
 
-/* ===== Poster helpers ===== */
+/* ===== Poster helpers (poster will be reworked later) ===== */
 function haversineMiles(lat1,lon1,lat2,lon2){
   const R=3958.7613, toRad=d=>d*Math.PI/180;
   const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
@@ -581,7 +604,7 @@ function totalTripMiles(trip){
 function formatMiles(m){ return m>=1000 ? `${(m/1000).toFixed(1)}k miles` : `${Math.round(m/10)*10} miles`; }
 function roundRect(ctx,x,y,w,h,r){ const rr=Math.min(r, w/2, h/2); ctx.beginPath(); ctx.moveTo(x+rr,y); ctx.arcTo(x+w,y,x+w,y+h,rr); ctx.arcTo(x+w,y+h,x,y+h,rr); ctx.arcTo(x,y+h,x,y,rr); ctx.arcTo(x,y,x+w,y,rr); ctx.closePath(); }
 
-/* Poster snapshot with same height-first logic */
+/* Poster snapshot (kept functional) */
 async function snapshotMapForPoster(){
   const mapEl=document.getElementById('map');
   const original = { width: mapEl.style.width, height: mapEl.style.height, transform: mapEl.style.transform };
@@ -610,8 +633,6 @@ async function snapshotMapForPoster(){
 
   return {canvas, cardX, cardY, cardW, cardH};
 }
-
-/* Build poster */
 async function buildPosterCanvas(mapShot){
   const canvas=document.createElement('canvas'); canvas.width=POSTER_W; canvas.height=POSTER_H;
   const ctx=canvas.getContext('2d');
@@ -698,10 +719,3 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
