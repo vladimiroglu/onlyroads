@@ -450,7 +450,7 @@ let map, statesGlowLayer, statesLayer, stateLayerByName={}, conusBounds=null;
 let markerById={}, routeLines={}, unlockedStates=new Set();
 
 /* fine, continuous visual scale after Leaflet chooses the nearest integer zoom */
-const MAP_FINE_SCALE = 0.86; // <— slightly smaller than v0.076 (tweak 0.90–1.10)
+const MAP_FINE_SCALE = 0.9; // <— slightly smaller than v0.076 (tweak 0.90–1.10)
 
 function initMap(){
   map=L.map('map',{
@@ -739,4 +739,5 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
+
 
