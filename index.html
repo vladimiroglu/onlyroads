@@ -106,15 +106,8 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 .cp-btn{background:#1a2f5a;border:1px solid var(--panelBorder);color:#fff;border-radius:10px;padding:8px 12px;cursor:pointer}
 .cp-btn:hover,.cp-chip:hover{background:#21366a}
 
-/* Visual effects */
-.or-states-glow path{
-  filter:
-    drop-shadow(0 0 2px rgba(255,255,255,.65))
-    drop-shadow(0 0 6px rgba(255,255,255,.35))
-    drop-shadow(0 0 12px rgba(255,255,255,.22));
-}
+/* Visual effects (only marker glow remains) */
 .or-marker-glow{ filter:url(#or-soft-glow); }
-.or-state-inner{ filter:url(#or-inner-shadow); }
 
 @media (max-width: 640px){
   #map{aspect-ratio: 21/10;}
@@ -122,23 +115,12 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 </style>
 </head>
 <body>
-<!-- SVG filters -->
+<!-- SVG filters: keep only soft glow for markers -->
 <svg width="0" height="0" style="position:absolute;left:-9999px;top:-9999px" aria-hidden="true" focusable="false">
   <defs>
     <filter id="or-soft-glow" x="-50%" y="-50%" width="200%" height="200%">
       <feGaussianBlur stdDeviation="2.8" result="blur"/>
       <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-    <filter id="or-inner-shadow" x="-50%" y="-50%" width="200%" height="200%">
-      <feOffset dx="0" dy="1" in="SourceAlpha" result="off"/>
-      <feGaussianBlur in="off" stdDeviation="2.5" result="blur"/>
-      <feColorMatrix in="blur" type="matrix"
-        values="0 0 0 0 0
-                0 0 0 0 0
-                0 0 0 0 0
-                0 0 0 .55 0" result="shadow"/>
-      <feComposite in="shadow" in2="SourceAlpha" operator="in" result="inner"/>
-      <feComposite in="SourceGraphic" in2="inner" operator="over"/>
     </filter>
   </defs>
 </svg>
@@ -195,8 +177,8 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 </div>
 
 <script>
-/* ===== Version constant (single source of truth) ===== */
-const VERSION = '0.089';
+/* ===== Version constant ===== */
+const VERSION = '0.090';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -215,30 +197,23 @@ const PALETTE=['#45a3ff','#ff6b6b','#ffd166','#06d6a0','#c792ea','#ff9f1c','#00b
 const DOT_RADIUS=3.5, DOT_WEIGHT=1, RED='#ff0000', GREEN='#30e6b6';
 const CURVE_GAIN=1.25;
 
-/* Map fit tuning (live map) */
-const FIT_PAD_BASE_PX = 12;    // a bit more breathing room
-const FIT_SHRINK_WIDE = 0.08;  // gentler zoom-in for wide screens
-const FIT_SHRINK_TALL = 0.04;  // gentler zoom-in for tall/narrow screens
+/* Deterministic fit: explicit pixel margins */
+const MAP_MARGINS = { top:16, right:20, bottom:16, left:20 };
+const POSTER_MARGINS = { top:14, right:18, bottom:14, left:18 };
 
 /* Poster map knobs */
 const POSTER_W = 1080, POSTER_H = 1920;
 const POSTER_BG = '#0b1c3a';
 const POSTER_INSET_TOP_SAFE = 250;
-const POSTER_INSET_BOTTOM_SAFE = 250;
 const POSTER_MAP_SCALE = 1.00;
-const POSTER_MAP_INSET_X = 0;
-const POSTER_MAP_INSET_Y = 0;
-const POSTER_FIT_PADDING = [10,10];
-const POSTER_BOUNDS_SHRINK = 0.06; // slightly less than live map; avoids clipping in export
+const POSTER_MAP_INSET_X = 0, POSTER_MAP_INSET_Y = 0;
 
-/* Colors/typography used in poster */
-const CARD_BG = '#0f2550';
+/* Poster typography */
 const WATERMARK_TEXT = 'ONLYROADS';
 const WATERMARK_COLOR = 'rgba(255,255,255,0.1)';
 const posterFonts = {
   bigNum: '900 168px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif',
   labelBig: '900 64px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif',
-  label: '700 64px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif',
   tripsTitle: '900 54px Impact, Haettenschweiler, "Arial Black", system-ui, sans-serif',
   text: '500 36px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif',
   version: '500 28px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif'
@@ -441,7 +416,7 @@ function renderList(){
 }
 
 /* ===== Map / drawing ===== */
-let map, statesGlowLayer, statesLayer, stateLayerByName={}, conusBounds=null;
+let map, statesLayer, stateLayerByName={}, conusBounds=null;
 let markerById={}, routeLines={}, unlockedStates=new Set();
 
 function initMap(){
@@ -450,7 +425,6 @@ function initMap(){
     dragging:false,scrollWheelZoom:false,doubleClickZoom:false,
     boxZoom:false,keyboard:false,touchZoom:false,worldCopyJump:false
   });
-  map.createPane('statesGlowPane');
   map.createPane('statesPane');
   map.createPane('routesPane');
   map.createPane('markersPane');
@@ -459,11 +433,7 @@ function initMap(){
     .then(r=>r.json()).then(geo=>{
       const conus=geo.features.filter(f=>!["Alaska","Hawaii","Puerto Rico"].includes(f.properties.name));
 
-      statesGlowLayer=L.geoJSON({type:"FeatureCollection",features:conus},{
-        pane:'statesGlowPane',
-        style:()=>({color:'#ffffff',weight:1,opacity:0.9,fillOpacity:0,className:'or-states-glow'}),
-      }).addTo(map);
-
+      // Main states (no glow layer)
       statesLayer=L.geoJSON({type:"FeatureCollection",features:conus},{
         pane:'statesPane',
         style:()=>({color:'#ffffff',weight:1,fillColor:'#0b1c3a',fillOpacity:1}),
@@ -484,28 +454,17 @@ function initMap(){
     });
 }
 
-function fitUS(){
-  if(!conusBounds || !map) return;
-
-  const el=document.getElementById('map');
-  const r=el.getBoundingClientRect();
-  const ar=r.width/Math.max(1,r.height);
-
-  // Zoom in a bit (negative pad) with extra pixel padding for the rounded box
-  const shrink = ar < 1.6 ? FIT_SHRINK_TALL : FIT_SHRINK_WIDE;
-
-  map.fitBounds(conusBounds.pad(-shrink),{
-    paddingTopLeft:[FIT_PAD_BASE_PX,FIT_PAD_BASE_PX],
-    paddingBottomRight:[FIT_PAD_BASE_PX,FIT_PAD_BASE_PX],
+/* Exact-margin fit for live map */
+function fitToMargins(bounds, m){
+  if(!bounds || !map) return;
+  map.fitBounds(bounds,{
+    paddingTopLeft:[m.left,m.top],
+    paddingBottomRight:[m.right,m.bottom],
     animate:false
   });
 }
+function fitUS(){ fitToMargins(conusBounds, MAP_MARGINS); }
 
-function setStateInnerShadow(name, on){
-  const layer=stateLayerByName[name]; if(!layer) return;
-  const el = layer.getElement && layer.getElement();
-  if(el){ el.classList.toggle('or-state-inner', !!on); }
-}
 function applyStateStyle(name,selected){
   const layer=stateLayerByName[name]; if(!layer) return;
   if(selected){
@@ -513,7 +472,6 @@ function applyStateStyle(name,selected){
   }else{
     layer.setStyle({fillColor:'#0b1c3a',fillOpacity:1,color:'#ffffff',weight:1});
   }
-  setStateInnerShadow(name, selected);
 }
 function refreshAllStateStyles(){ Object.keys(stateLayerByName).forEach(n=>applyStateStyle(n,unlockedStates.has(n))); }
 
@@ -657,11 +615,7 @@ function roundRect(ctx,x,y,w,h,r){ const rr=Math.min(r, w/2, h/2); ctx.beginPath
 /* Snapshot the live Leaflet map at poster-card size with its own fit */
 async function snapshotMapForPoster(){
   const mapEl=document.getElementById('map');
-  const original = {
-    width: mapEl.style.width,
-    height: mapEl.style.height,
-    transform: mapEl.style.transform,
-  };
+  const original = { width: mapEl.style.width, height: mapEl.style.height, transform: mapEl.style.transform };
 
   const cardX = 54, cardW = POSTER_W-108;
   const cardY = POSTER_INSET_TOP_SAFE + 160;
@@ -676,11 +630,7 @@ async function snapshotMapForPoster(){
 
   map.invalidateSize();
   if(conusBounds){
-    map.fitBounds(conusBounds.pad(-POSTER_BOUNDS_SHRINK), {
-      paddingTopLeft: POSTER_FIT_PADDING,
-      paddingBottomRight: POSTER_FIT_PADDING,
-      animate:false
-    });
+    fitToMargins(conusBounds, POSTER_MARGINS);
   }
 
   const canvas = await html2canvas(mapEl, {useCORS:true, backgroundColor:null, scale:2});
