@@ -497,7 +497,7 @@ function _usPixelHeightAtZoom(bounds, z) {
 }
 
 /* Append scale() AND translateX() to Leaflet's translate3d(...) so centering is preserved */
-const MAP_Y_NUDGE = -210; // pixels (try -10 to -30 until it feels right)
+const MAP_Y_NUDGE = -213; // pixels (try -10 to -30 until it feels right)
 
 function applyFineScale() {
   const pane = map?.getPanes()?.mapPane;
@@ -759,6 +759,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
+
 
 
 
