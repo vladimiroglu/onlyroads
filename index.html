@@ -326,22 +326,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     const conusBoundsPoster = statesLayerPoster.getBounds();
 
     // First, let Leaflet compute a width-constrained view using 35px padding
-   // Compute effective placement
-const MAP_W = (POSTER_MAP_WIDTH_OVERRIDE != null)
-  ? Number(POSTER_MAP_WIDTH_OVERRIDE)
-  : (POSTER_CANVAS_W - POSTER_LEFT_MARGIN - POSTER_RIGHT_MARGIN);
-
-const MAP_X = (POSTER_MAP_X_OVERRIDE != null)
-  ? Number(POSTER_MAP_X_OVERRIDE)
-  : POSTER_LEFT_MARGIN;
-
-// Derive padding for the Leaflet fit so geometry aligns with our final crop
-const fitLeft  = Math.max(0, MAP_X);
-const fitRight = Math.max(0, POSTER_CANVAS_W - MAP_X - MAP_W);
-
-// Now fit using those paddings
-fitByWidthPoster(posterMap, conusBoundsPoster, { left: fitLeft, right: fitRight, top: 0, bottom: 0 });
-
+    fitByWidthPoster(posterMap, conusBoundsPoster, {left:POSTER_SIDE_MARGIN, right:POSTER_SIDE_MARGIN, top:0, bottom:0});
 
     // Wait for canvas to paint
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
@@ -913,8 +898,6 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
-
-
 
 
 
