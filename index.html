@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.118';
+const VERSION = '0.119';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -269,7 +269,7 @@ document.addEventListener('click',e=>{
   if(outside&&menu.classList.contains('show')){ menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false); }
 });
 
-/* ===== Poster (default SVG renderer; crop to viewport; 35px side margins) ===== */
+/* ===== Poster (default SVG renderer; crop to viewport; exact 35px side gutters) ===== */
 document.getElementById('miSave').addEventListener('click', async ()=>{
   menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
   try{
@@ -282,8 +282,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     work.style.width='1080px'; work.style.height='1920px';
     document.body.appendChild(work);
 
-    // IMPORTANT: don't force a custom renderer; let Leaflet use its default SVG,
-    // which leaflet-curve augments with _updateCurve.
+    // Use default SVG renderer so leaflet-curve is patched
     const posterMap = L.map(work,{
       zoomControl:false,attributionControl:false,
       dragging:false,scrollWheelZoom:false,doubleClickZoom:false,
@@ -313,10 +312,10 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
 
     const conusBoundsPoster = statesLayerPoster.getBounds();
 
-    // Fit to width with 35px side margins
+    // Fit by WIDTH ONLY — 35px left/right gutters. No height backoff.
     fitByWidthPoster(posterMap, conusBoundsPoster, {left:POSTER_SIDE_MARGIN, right:POSTER_SIDE_MARGIN, top:0, bottom:0});
 
-    // Routes (below markers)
+    // Routes
     for(const t of trips){
       if(!t.cities || t.cities.length<2) continue;
       const pts = t.cities.map(c=>[c.lat,c.lon]);
@@ -325,22 +324,21 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
       if(path){ L.curve(path,{color:t.color||'#45a3ff',weight:3}).addTo(posterMap); }
     }
 
-    // Markers (on top)
+    // Markers
     for(const t of trips){
       for(const c of t.cities||[]){
         L.circleMarker([c.lat,c.lon], { radius:4, color:'#ffffff', weight:1, fillColor:'#ff0000', fillOpacity:1 }).addTo(posterMap);
       }
     }
 
-    // Flush SVG render
+    // Flush and rasterize the exact viewport
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
 
-    // Grab the SVG container and rasterize ONLY the viewport (cropped by Leaflet pan)
     const activeRenderer = posterMap.getRenderer(statesLayerPoster);
     const svgEl = (typeof activeRenderer.getContainer === 'function') ? activeRenderer.getContainer() : activeRenderer._container;
     if(!(svgEl instanceof SVGSVGElement)) throw new Error('Poster renderer SVG not found');
 
-    const {tx,ty} = parseSvgPan(svgEl); // Leaflet pans with a <g transform="translate(tx,ty)">
+    const {tx,ty} = parseSvgPan(svgEl);
     const svgClone = svgEl.cloneNode(true);
     svgClone.setAttribute('xmlns','http://www.w3.org/2000/svg');
     svgClone.setAttribute('width','1080');
@@ -355,7 +353,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     dctx.fillStyle='#0b1c3a';
     dctx.fillRect(0,0,dst.width,dst.height);
 
-    // Crop rect equals the visible viewport inside the giant SVG
+    // Crop exactly the visible viewport
     const sx = -tx, sy = -ty, sw = 1080, sh = 1920;
 
     await new Promise((resolve, reject)=>{
@@ -371,7 +369,6 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
       img.src = url;
     });
 
-    // Cleanup
     posterMap.remove(); work.remove();
   }catch(err){
     console.error(err);
@@ -387,6 +384,7 @@ function parseSvgPan(svg){
   return { tx: m ? parseFloat(m[1])||0 : 0, ty: m ? parseFloat(m[2])||0 : 0 };
 }
 
+/* (legacy) not used by poster anymore, kept for compatibility */
 function parseTranslate(transformStr){
   const s = transformStr || '';
   const m3 = /translate3d\(\s*([-\d.]+)px\s*,\s*([-\d.]+)px/i.exec(s);
@@ -396,26 +394,28 @@ function parseTranslate(transformStr){
   return {tx:0, ty:0};
 }
 
+/* Width-only fit for poster: never reduces zoom for height overflow */
 function fitByWidthPoster(m, bounds, pad){
   const left=pad.left||0, right=pad.right||0, top=pad.top||0, bottom=pad.bottom||0;
+
+  // initial fit with side padding; this centers bounds
   m.fitBounds(bounds,{paddingTopLeft:[left,top], paddingBottomRight:[right,bottom], animate:false});
 
+  // adjust zoom to make projected width match (viewportWidth - left-right)
   const size=m.getSize();
   const targetW = Math.max(1, size.x - (left+right));
-  const nw=bounds.getNorthWest(), ne=bounds.getNorthEast(), sw=bounds.getSouthWest();
-  const pW=m.latLngToLayerPoint(nw), pE=m.latLngToLayerPoint(ne), pN=m.latLngToLayerPoint(nw), pS=m.latLngToLayerPoint(sw);
+
+  const nw=bounds.getNorthWest(), ne=bounds.getNorthEast();
+  const pW=m.latLngToLayerPoint(nw), pE=m.latLngToLayerPoint(ne);
   const curW=Math.abs(pE.x - pW.x);
+
   if(curW>0){
     const factor=targetW/curW;
-    if(factor>0 && Math.abs(factor-1)>1e-6) m.setZoom(m.getZoom()+Math.log2(factor),{animate:false});
+    if(factor>0 && Math.abs(factor-1)>1e-6){
+      m.setZoom(m.getZoom()+Math.log2(factor),{animate:false});
+    }
   }
-  // Back off if height overflows after width-fit
-  const targetH = Math.max(1, size.y - (top+bottom));
-  const curH=Math.abs(pN.y - pS.y);
-  if(curH>targetH){
-    const factor=targetH/curH;
-    if(factor>0 && Math.abs(factor-1)>1e-6) m.setZoom(m.getZoom()+Math.log2(factor),{animate:false});
-  }
+  // DO NOT back off for height — we want exact 35px left/right gutters.
 }
 
 function createPosterOverlay(){
