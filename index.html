@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.117';
+const VERSION = '0.118';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -269,21 +269,21 @@ document.addEventListener('click',e=>{
   if(outside&&menu.classList.contains('show')){ menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false); }
 });
 
-/* ===== Poster (Leaflet SVG offscreen + rasterize, cropped to viewport) ===== */
+/* ===== Poster (default SVG renderer; crop to viewport; 35px side margins) ===== */
 document.getElementById('miSave').addEventListener('click', async ()=>{
   menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
   try{
     const overlay = createPosterOverlay();
     document.body.appendChild(overlay.el);
 
-    // build an offscreen map at poster size
+    // Offscreen map at poster size
     const work = document.createElement('div');
     work.style.position='absolute'; work.style.left='-99999px'; work.style.top='-99999px';
     work.style.width='1080px'; work.style.height='1920px';
     document.body.appendChild(work);
 
-    // Use SVG renderer so leaflet-curve works
-    const posterRenderer = L.svg({padding:0.5});
+    // IMPORTANT: don't force a custom renderer; let Leaflet use its default SVG,
+    // which leaflet-curve augments with _updateCurve.
     const posterMap = L.map(work,{
       zoomControl:false,attributionControl:false,
       dragging:false,scrollWheelZoom:false,doubleClickZoom:false,
@@ -292,7 +292,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     });
     posterMap.invalidateSize(false);
 
-    // load states and draw
+    // Load states and draw
     const geo = await fetch("https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json").then(r=>r.json());
     const conus = geo.features.filter(f=>!["Alaska","Hawaii","Puerto Rico"].includes(f.properties.name));
     const statesFC = {type:"FeatureCollection",features:conus};
@@ -304,7 +304,6 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     }));
 
     const statesLayerPoster = L.geoJSON(statesFC,{
-      renderer: posterRenderer,
       style: f=>{
         const name=f.properties?.name;
         if(unlocked.has(name)) return {color:'#0b1c3a',weight:2,fillColor:'#ffffff',fillOpacity:1};
@@ -314,32 +313,30 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
 
     const conusBoundsPoster = statesLayerPoster.getBounds();
 
-    // width-first fit: touch left/right with 35px safety
+    // Fit to width with 35px side margins
     fitByWidthPoster(posterMap, conusBoundsPoster, {left:POSTER_SIDE_MARGIN, right:POSTER_SIDE_MARGIN, top:0, bottom:0});
 
-    // routes (below markers)
+    // Routes (below markers)
     for(const t of trips){
       if(!t.cities || t.cities.length<2) continue;
       const pts = t.cities.map(c=>[c.lat,c.lon]);
       const closed = (()=>{ if(pts.length<3) return false; const a=pts[0], b=pts[pts.length-1]; return Math.hypot(a[0]-b[0], a[1]-b[1])<0.6; })();
       const path=buildSmoothPathAdaptive(pts,{closed});
-      if(path){
-        L.curve(path,{renderer:posterRenderer,color:t.color||'#45a3ff',weight:3}).addTo(posterMap);
-      }
+      if(path){ L.curve(path,{color:t.color||'#45a3ff',weight:3}).addTo(posterMap); }
     }
 
-    // markers (on top)
+    // Markers (on top)
     for(const t of trips){
       for(const c of t.cities||[]){
-        L.circleMarker([c.lat,c.lon], {renderer:posterRenderer, radius:4, color:'#ffffff', weight:1, fillColor:'#ff0000', fillOpacity:1}).addTo(posterMap);
+        L.circleMarker([c.lat,c.lon], { radius:4, color:'#ffffff', weight:1, fillColor:'#ff0000', fillOpacity:1 }).addTo(posterMap);
       }
     }
 
-    // let SVG render flush
+    // Flush SVG render
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
 
     // Grab the SVG container and rasterize ONLY the viewport (cropped by Leaflet pan)
-    const activeRenderer = posterMap.getRenderer(statesLayerPoster) || posterRenderer;
+    const activeRenderer = posterMap.getRenderer(statesLayerPoster);
     const svgEl = (typeof activeRenderer.getContainer === 'function') ? activeRenderer.getContainer() : activeRenderer._container;
     if(!(svgEl instanceof SVGSVGElement)) throw new Error('Poster renderer SVG not found');
 
@@ -374,7 +371,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
       img.src = url;
     });
 
-    // cleanup
+    // Cleanup
     posterMap.remove(); work.remove();
   }catch(err){
     console.error(err);
@@ -412,7 +409,7 @@ function fitByWidthPoster(m, bounds, pad){
     const factor=targetW/curW;
     if(factor>0 && Math.abs(factor-1)>1e-6) m.setZoom(m.getZoom()+Math.log2(factor),{animate:false});
   }
-  // if we overflow height after width fit, back off a little
+  // Back off if height overflows after width-fit
   const targetH = Math.max(1, size.y - (top+bottom));
   const curH=Math.abs(pN.y - pS.y);
   if(curH>targetH){
