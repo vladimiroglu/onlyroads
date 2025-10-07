@@ -125,7 +125,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 <!-- SVG filters -->
 <svg width="0" height="0" style="position:absolute;left:-9999px;top:-9999px" aria-hidden="true" focusable="false">
   <defs>
-    <filter id="or-soft-glow" x="-50% y="-50%" width="200%" height="200%">
+    <filter id="or-soft-glow" x="-50%" y="-50%" width="200%" height="200%">
       <feGaussianBlur stdDeviation="2.8" result="blur"/>
       <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.128';
+const VERSION = '0.129';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -222,14 +222,14 @@ const controls=document.getElementById('controls'),
 const list=document.getElementById('cityList'), emptyListHint=document.getElementById('emptyListHint');
 const legendEl=document.getElementById('legend');
 const toastEl=document.getElementById('toast'); let toastTimer=null;
-function toast(t){toastEl.textContent=t;toastEl.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>toastEl.classList.remove('show'),1600);} 
+function toast(t){toastEl.textContent=t;toastEl.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>toastEl.classList.remove('show'),1600);}
 
 /* Color picker refs */
 const cp=document.getElementById('colorPicker'), cpSwatches=document.getElementById('cpSwatches'), cpCustom=document.getElementById('cpCustom'), cpClose=document.getElementById('cpClose');
 
 /* ===== App state ===== */
 let trips=[],activeTripId=null,tripCounter=0,cidCounter=0,selectedId=null;
-function getActiveTrip(){return trips.find(t=>t.id===activeTripId);} 
+function getActiveTrip(){return trips.find(t=>t.id===activeTripId);}
 
 /* ===== Header/menu ===== */
 const kebabBtn=document.getElementById('kebabBtn'); const menu=document.getElementById('menu');
@@ -350,9 +350,6 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
 
     if(!(src instanceof HTMLCanvasElement)) throw new Error('Poster renderer canvas not found');
 
-    // Get the pane offset applied by Leaflet's CSS transform
-    const panePos = L.DomUtil.getPosition(src) || L.point(0,0);
-
     // Destination
     const dst = overlay.canvas;
     const dctx = dst.getContext('2d');
@@ -366,8 +363,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
 
     // Overlays (routes/markers) using the posterMap's projection
     dctx.save();
-    // Align overlay container coordinates with the base image by subtracting the pane offset
-    dctx.translate(MAP_X - panePos.x, -panePos.y);
+    dctx.translate(MAP_X, 0);
     dctx.lineCap='round'; dctx.lineJoin='round';
     for(const t of trips){
       if(!t.cities || t.cities.length<2) continue;
@@ -428,8 +424,7 @@ function createPosterOverlay(){
       const a=document.createElement('a'); a.href=canvas.toDataURL('image/png'); a.download=`onlyroads_poster_${Date.now()}.png`; a.click();
     }catch(e){ console.error(e); toast('Download failed'); }
   };
-  const close = document.createElement('button'); close.className='orPosterBtn'; close.textContent='Close';
-  close.onclick = () => el.remove();
+  const close = document.createElement('button'); close.className='orPosterBtn'; close.textContent='Close'; close.onclick=()=>el.remove();
 
   btns.append(dl,close); top.append(title,btns);
   const stage=document.createElement('div'); stage.className='orPosterStage'; stage.appendChild(canvas);
@@ -467,6 +462,20 @@ function drawMarker(ctx, x, y, r, stroke, sw, fill){
   ctx.fillStyle=fill; ctx.fill();
   ctx.lineWidth=sw; ctx.strokeStyle=stroke; ctx.stroke();
 }
+
+/* ===== Share & feedback ===== */
+document.getElementById('miShare').addEventListener('click', async ()=>{
+  menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
+  const url=updateShareURL();
+  try{
+    if(navigator.share){ await navigator.share({title:'OnlyRoads',url}); toast('Shared'); }
+    else { await navigator.clipboard.writeText(url); toast('Link copied'); }
+  }catch(e){}
+});
+document.getElementById('miFeedback').addEventListener('click', ()=>{
+  menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
+  location.href=`mailto:?subject=${encodeURIComponent('OnlyRoads feedback')}&body=${encodeURIComponent('Feedback:\n\n')}`;
+});
 
 /* ===== Trips UI ===== */
 function refreshTripUI(){
@@ -755,7 +764,7 @@ function applyStateStyle(name,selected){
 }
 function refreshAllStateStyles(){ Object.keys(stateLayerByName).forEach(n=>applyStateStyle(n,unlockedStates.has(n))); }
 
-function markerStyle(isSelected){ return { radius:DOT_RADIUS, color:'#ffffff', weight:DOT_WEIGHT, fillColor=isSelected?GREEN:RED, fillOpacity:1, pane:'markersPane', className:'or-marker-glow', interactive:false }; }
+function markerStyle(isSelected){ return { radius:DOT_RADIUS, color:'#ffffff', weight:DOT_WEIGHT, fillColor:isSelected?GREEN:RED, fillOpacity:1, pane:'markersPane', className:'or-marker-glow', interactive:false }; }
 function updateSelectionVisuals(){
   [...list.children].forEach(li=>{ if(!li.classList.contains('li')) return; +li.dataset.id===selectedId ? li.classList.add('li-selected') : li.classList.remove('li-selected');});
   for(const id in markerById){ const m=markerById[id]; if(m){ m.setStyle(markerStyle(+id===selectedId)); } }
