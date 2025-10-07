@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.124';
+const VERSION = '0.125';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -269,12 +269,10 @@ document.addEventListener('click',e=>{
 });
 
 /* ===== Poster (standalone map area; width/offset params) ===== */
-/* Poster layout params you can adjust */
 const POSTER_CANVAS_W = 1080;     // poster width (px)
 const POSTER_CANVAS_H = 1920;     // poster height (px)
 const POSTER_LEFT_MARGIN  = 35;   // default left blank (px)
 const POSTER_RIGHT_MARGIN = 35;   // default right blank (px)
-
 // Explicit overrides (take precedence over margins if set)
 const POSTER_MAP_WIDTH_OVERRIDE = null; // e.g., 1010 or 3000
 const POSTER_MAP_X_OVERRIDE     = null; // e.g., 35 or 0
@@ -285,7 +283,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     const overlay = createPosterOverlay();
     document.body.appendChild(overlay.el);
 
-    // Compute final placement for the map area on the poster
+    // Compute final placement
     const MAP_W = (POSTER_MAP_WIDTH_OVERRIDE != null)
       ? Number(POSTER_MAP_WIDTH_OVERRIDE)
       : (POSTER_CANVAS_W - POSTER_LEFT_MARGIN - POSTER_RIGHT_MARGIN);
@@ -293,23 +291,22 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
       ? Number(POSTER_MAP_X_OVERRIDE)
       : POSTER_LEFT_MARGIN;
 
-    // --- Build an offscreen poster work area (no impact on live map) ---
+    // Offscreen poster work area (no impact on live map)
     const work = document.createElement('div');
     work.style.position='absolute'; work.style.left='-99999px'; work.style.top='-99999px';
     work.style.width=POSTER_CANVAS_W+'px'; work.style.height=POSTER_CANVAS_H+'px';
     work.style.overflow='hidden';
     document.body.appendChild(work);
 
-    // Create a child div that is EXACTLY the map’s drawing area
+    // Map drawing area with exact width/height
     const mapArea = document.createElement('div');
     mapArea.style.position='absolute';
-    mapArea.style.left='0px';                 // Leaflet container starts at (0,0) in its own world
-    mapArea.style.top='0px';
+    mapArea.style.left='0px'; mapArea.style.top='0px';
     mapArea.style.width = Math.max(1, MAP_W) + 'px';
     mapArea.style.height = POSTER_CANVAS_H + 'px';
     work.appendChild(mapArea);
 
-    // Create a Leaflet map only inside mapArea (Canvas)
+    // Standalone Leaflet map (Canvas renderer)
     const posterMap = L.map(mapArea,{
       zoomControl:false,attributionControl:false,
       dragging:false,scrollWheelZoom:false,doubleClickZoom:false,
@@ -318,7 +315,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     });
     posterMap.invalidateSize(false);
 
-    // Load states and layer
+    // States
     const geo = await fetch("https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json").then(r=>r.json());
     const conus = geo.features.filter(f=>!["Alaska","Hawaii","Puerto Rico"].includes(f.properties.name));
     const statesFC = {type:"FeatureCollection",features:conus};
@@ -338,37 +335,35 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
       }
     }).addTo(posterMap);
 
-    // Fit within the mapArea’s width (no margins inside, we control margins when drawing onto the poster)
+    // Fit to width of mapArea
     const conusBoundsPoster = statesLayerPoster.getBounds();
     posterMap.fitBounds(conusBoundsPoster, {padding:[0,0], animate:false});
 
-    // Ensure the Canvas has rendered
+    // Wait for canvas to paint
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
 
-    // Obtain the renderer canvas of this standalone poster map
+    // Source canvas
     const activeRenderer = posterMap.getRenderer(statesLayerPoster);
     const src = (typeof activeRenderer.getContainer === 'function')
                   ? activeRenderer.getContainer()
-                  : activeRenderer._container; // should be <canvas>
+                  : activeRenderer._container;
 
     if(!(src instanceof HTMLCanvasElement)) throw new Error('Poster renderer canvas not found');
 
-    // Prepare destination canvas (poster preview)
-    const dst = overlay.canvas; // already 1080x1920 via createPosterOverlay()
+    // Destination
+    const dst = overlay.canvas;
     const dctx = dst.getContext('2d');
 
-    // Paint poster background
+    // Background
     dctx.fillStyle='#0b1c3a';
     dctx.fillRect(0,0,POSTER_CANVAS_W,POSTER_CANVAS_H);
 
-    // Draw the entire posterMap canvas into the poster at MAP_X (no cropping needed)
-    // (src is DPR-scaled; drawImage will scale to our target size naturally)
+    // Draw Leaflet canvas into poster at MAP_X
     dctx.drawImage(src, 0, 0, src.width, src.height, MAP_X, 0, MAP_W, POSTER_CANVAS_H);
 
-    // === Draw overlays (routes/markers) into the same coordinate space ===
+    // Overlays (routes/markers)
     dctx.save();
-    dctx.translate(MAP_X, 0); // shift to the map’s left on the poster
-
+    dctx.translate(MAP_X, 0);
     dctx.lineCap='round'; dctx.lineJoin='round';
     for(const t of trips){
       if(!t.cities || t.cities.length<2) continue;
@@ -386,7 +381,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     }
     dctx.restore();
 
-    // Cleanup poster map DOM
+    // Cleanup
     posterMap.remove(); work.remove();
 
   }catch(err){
@@ -394,6 +389,33 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     toast('Could not create poster');
   }
 });
+
+/* ===== Poster helpers (RESTORED) ===== */
+function createPosterOverlay(){
+  const el = document.createElement('div'); el.id='orPosterOverlay';
+  const card = document.createElement('div'); card.className='orPosterCard';
+  const top = document.createElement('div'); top.className='orPosterTop';
+  const title = document.createElement('div'); title.className='orPosterTitle'; title.textContent='Poster Preview';
+  const btns = document.createElement('div'); btns.className='orPosterBtns';
+
+  const canvas = document.createElement('canvas');
+  canvas.className='orPosterCanvas';
+  canvas.width  = POSTER_CANVAS_W;
+  canvas.height = POSTER_CANVAS_H;
+
+  const dl = document.createElement('button'); dl.className='orPosterBtn'; dl.textContent='Download PNG';
+  dl.onclick=()=>{
+    try{
+      const a=document.createElement('a'); a.href=canvas.toDataURL('image/png'); a.download=`onlyroads_poster_${Date.now()}.png`; a.click();
+    }catch(e){ console.error(e); toast('Download failed'); }
+  };
+  const close = document.createElement('button'); close.className='orPosterBtn'; close.textContent='Close'; close.onclick=()=>el.remove();
+
+  btns.append(dl,close); top.append(title,btns);
+  const stage=document.createElement('div'); stage.className='orPosterStage'; stage.appendChild(canvas);
+  card.append(top,stage); el.appendChild(card);
+  return {el, canvas};
+}
 
 function drawPathLatLng(ctx, map, path, color, width){
   ctx.beginPath();
