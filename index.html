@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.119';
+const VERSION = '0.120';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -269,7 +269,7 @@ document.addEventListener('click',e=>{
   if(outside&&menu.classList.contains('show')){ menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false); }
 });
 
-/* ===== Poster (default SVG renderer; crop to viewport; exact 35px side gutters) ===== */
+/* ===== Poster (Canvas renderer + manual overlays; exact 35px gutters) ===== */
 document.getElementById('miSave').addEventListener('click', async ()=>{
   menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
   try{
@@ -282,16 +282,16 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     work.style.width='1080px'; work.style.height='1920px';
     document.body.appendChild(work);
 
-    // Use default SVG renderer so leaflet-curve is patched
+    // Use Canvas renderer and NEVER attach curves/markers as layers
     const posterMap = L.map(work,{
       zoomControl:false,attributionControl:false,
       dragging:false,scrollWheelZoom:false,doubleClickZoom:false,
       boxZoom:false,keyboard:false,touchZoom:false,worldCopyJump:false,
-      zoomSnap:0, zoomDelta:0.25, preferCanvas:false, fadeAnimation:false, zoomAnimation:false
+      zoomSnap:0, zoomDelta:0.25, preferCanvas:true, fadeAnimation:false, zoomAnimation:false
     });
     posterMap.invalidateSize(false);
 
-    // Load states and draw
+    // Load states and draw (Canvas)
     const geo = await fetch("https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json").then(r=>r.json());
     const conus = geo.features.filter(f=>!["Alaska","Hawaii","Puerto Rico"].includes(f.properties.name));
     const statesFC = {type:"FeatureCollection",features:conus};
@@ -303,6 +303,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     }));
 
     const statesLayerPoster = L.geoJSON(statesFC,{
+      renderer: L.canvas(),
       style: f=>{
         const name=f.properties?.name;
         if(unlocked.has(name)) return {color:'#0b1c3a',weight:2,fillColor:'#ffffff',fillOpacity:1};
@@ -312,41 +313,22 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
 
     const conusBoundsPoster = statesLayerPoster.getBounds();
 
-    // Fit by WIDTH ONLY — 35px left/right gutters. No height backoff.
+    // WIDTH-ONLY fit with 35px left/right
     fitByWidthPoster(posterMap, conusBoundsPoster, {left:POSTER_SIDE_MARGIN, right:POSTER_SIDE_MARGIN, top:0, bottom:0});
 
-    // Routes
-    for(const t of trips){
-      if(!t.cities || t.cities.length<2) continue;
-      const pts = t.cities.map(c=>[c.lat,c.lon]);
-      const closed = (()=>{ if(pts.length<3) return false; const a=pts[0], b=pts[pts.length-1]; return Math.hypot(a[0]-b[0], a[1]-b[1])<0.6; })();
-      const path=buildSmoothPathAdaptive(pts,{closed});
-      if(path){ L.curve(path,{color:t.color||'#45a3ff',weight:3}).addTo(posterMap); }
-    }
-
-    // Markers
-    for(const t of trips){
-      for(const c of t.cities||[]){
-        L.circleMarker([c.lat,c.lon], { radius:4, color:'#ffffff', weight:1, fillColor:'#ff0000', fillOpacity:1 }).addTo(posterMap);
-      }
-    }
-
-    // Flush and rasterize the exact viewport
+    // Let Canvas render
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
 
+    // Copy the canvas renderer content into the poster canvas
     const activeRenderer = posterMap.getRenderer(statesLayerPoster);
-    const svgEl = (typeof activeRenderer.getContainer === 'function') ? activeRenderer.getContainer() : activeRenderer._container;
-    if(!(svgEl instanceof SVGSVGElement)) throw new Error('Poster renderer SVG not found');
+    const src = (typeof activeRenderer.getContainer === 'function')
+                  ? activeRenderer.getContainer()
+                  : activeRenderer._container; // <canvas>
+    if(!(src instanceof HTMLCanvasElement)) throw new Error('Poster renderer canvas not found');
 
-    const {tx,ty} = parseSvgPan(svgEl);
-    const svgClone = svgEl.cloneNode(true);
-    svgClone.setAttribute('xmlns','http://www.w3.org/2000/svg');
-    svgClone.setAttribute('width','1080');
-    svgClone.setAttribute('height','1920');
-
-    const svgString = new XMLSerializer().serializeToString(svgClone);
-    const svgBlob = new Blob([svgString], {type:'image/svg+xml;charset=utf-8'});
-    const url = URL.createObjectURL(svgBlob);
+    const {tx,ty} = parseTranslate(src.style.transform);
+    const ratioX = src.width  / work.clientWidth;   // devicePixelRatio-ish
+    const ratioY = src.height / work.clientHeight;
 
     const dst = overlay.canvas;
     const dctx = dst.getContext('2d');
@@ -354,21 +336,38 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     dctx.fillRect(0,0,dst.width,dst.height);
 
     // Crop exactly the visible viewport
-    const sx = -tx, sy = -ty, sw = 1080, sh = 1920;
+    dctx.drawImage(
+      src,
+      -tx/ratioX,
+      -ty/ratioY,
+      src.width/ratioX,
+      src.height/ratioY,
+      0,0,
+      dst.width,dst.height
+    );
 
-    await new Promise((resolve, reject)=>{
-      const img = new Image();
-      img.onload = ()=>{ 
-        try{
-          dctx.drawImage(img, sx, sy, sw, sh, 0, 0, dst.width, dst.height);
-          URL.revokeObjectURL(url);
-          resolve();
-        }catch(e){ reject(e); }
-      };
-      img.onerror = reject;
-      img.src = url;
-    });
+    // === Manual overlays (routes & markers) ===
+    dctx.lineCap='round'; dctx.lineJoin='round';
 
+    // Routes
+    for(const t of trips){
+      if(!t.cities || t.cities.length<2) continue;
+      const pts = t.cities.map(c=>[c.lat,c.lon]);
+      const closed = (()=>{ if(pts.length<3) return false; const a=pts[0], b=pts[pts.length-1]; return Math.hypot(a[0]-b[0], a[1]-b[1])<0.6; })();
+      const path=buildSmoothPathAdaptive(pts,{closed});
+      if(!path) continue;
+      drawPathLatLng(dctx, posterMap, path, t.color||'#45a3ff', 3);
+    }
+
+    // Markers
+    for(const t of trips){
+      for(const c of t.cities||[]){
+        const p = posterMap.latLngToContainerPoint([c.lat,c.lon]);
+        drawMarker(dctx, p.x, p.y, 4, '#ffffff', 1, '#ff0000');
+      }
+    }
+
+    // Cleanup
     posterMap.remove(); work.remove();
   }catch(err){
     console.error(err);
@@ -376,15 +375,38 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
   }
 });
 
-// Parse Leaflet SVG pan translate from the root <g>
-function parseSvgPan(svg){
-  const g = svg.querySelector('g[transform*="translate"]') || svg.querySelector('g');
-  if(!g){ return {tx:0, ty:0}; }
-  const m = /translate\(\s*([-\d.]+)[ ,]\s*([-\d.]+)\s*\)/i.exec(g.getAttribute('transform')||'');
-  return { tx: m ? parseFloat(m[1])||0 : 0, ty: m ? parseFloat(m[2])||0 : 0 };
+// Helpers for poster overlays
+function drawPathLatLng(ctx, map, path, color, width){
+  ctx.beginPath();
+  for(let i=0;i<path.length;){
+    const cmd = path[i];
+    if(cmd==='M'){
+      const p = map.latLngToContainerPoint(path[i+1]);
+      ctx.moveTo(p.x, p.y);
+      i+=2;
+    }else if(cmd==='C'){
+      const c1 = map.latLngToContainerPoint(path[i+1]);
+      const c2 = map.latLngToContainerPoint(path[i+2]);
+      const p  = map.latLngToContainerPoint(path[i+3]);
+      ctx.bezierCurveTo(c1.x,c1.y,c2.x,c2.y,p.x,p.y);
+      i+=4;
+    }else if(cmd==='Z'){
+      ctx.closePath(); i+=1;
+    }else{
+      i+=1;
+    }
+  }
+  ctx.strokeStyle=color;
+  ctx.lineWidth=width;
+  ctx.stroke();
+}
+function drawMarker(ctx, x, y, r, stroke, sw, fill){
+  ctx.beginPath();
+  ctx.arc(x,y,r,0,Math.PI*2);
+  ctx.fillStyle=fill; ctx.fill();
+  ctx.lineWidth=sw; ctx.strokeStyle=stroke; ctx.stroke();
 }
 
-/* (legacy) not used by poster anymore, kept for compatibility */
 function parseTranslate(transformStr){
   const s = transformStr || '';
   const m3 = /translate3d\(\s*([-\d.]+)px\s*,\s*([-\d.]+)px/i.exec(s);
@@ -394,28 +416,20 @@ function parseTranslate(transformStr){
   return {tx:0, ty:0};
 }
 
-/* Width-only fit for poster: never reduces zoom for height overflow */
 function fitByWidthPoster(m, bounds, pad){
   const left=pad.left||0, right=pad.right||0, top=pad.top||0, bottom=pad.bottom||0;
-
-  // initial fit with side padding; this centers bounds
   m.fitBounds(bounds,{paddingTopLeft:[left,top], paddingBottomRight:[right,bottom], animate:false});
 
-  // adjust zoom to make projected width match (viewportWidth - left-right)
   const size=m.getSize();
   const targetW = Math.max(1, size.x - (left+right));
-
-  const nw=bounds.getNorthWest(), ne=bounds.getNorthEast();
-  const pW=m.latLngToLayerPoint(nw), pE=m.latLngToLayerPoint(ne);
+  const nw=bounds.getNorthWest(), ne=bounds.getNorthEast(), sw=bounds.getSouthWest();
+  const pW=m.latLngToLayerPoint(nw), pE=m.latLngToLayerPoint(ne), pN=m.latLngToLayerPoint(nw), pS=m.latLngToLayerPoint(sw);
   const curW=Math.abs(pE.x - pW.x);
-
   if(curW>0){
     const factor=targetW/curW;
-    if(factor>0 && Math.abs(factor-1)>1e-6){
-      m.setZoom(m.getZoom()+Math.log2(factor),{animate:false});
-    }
+    if(factor>0 && Math.abs(factor-1)>1e-6) m.setZoom(m.getZoom()+Math.log2(factor),{animate:false});
   }
-  // DO NOT back off for height — we want exact 35px left/right gutters.
+  // Do NOT back off for height—left/right gutters are the constraint.
 }
 
 function createPosterOverlay(){
@@ -755,7 +769,7 @@ function recomputeUnlockedFromCities(){
   updateCounter(); refreshAllStateStyles();
 }
 
-/* Curves */
+/* Curves (reused for poster path generation) */
 function _scaledDx(p1,p2){ const avg=((p1[0]+p2[0])/2)*Math.PI/180; return (p2[1]-p1[1])*Math.cos(avg); }
 function adaptiveTauFor(p1,p2){ const dx=Math.abs(_scaledDx(p1,p2)), dy=Math.abs(p2[0]-p1[0]), d=Math.hypot(dx,dy); const r=dx/(dx+dy+1e-9); let tau=0.62+(r-0.5)*0.36+Math.min(d/5,1)*0.16; return Math.max(0.5,Math.min(0.85,tau)); }
 function _controls(p0,p1,p2,p3,tau){
