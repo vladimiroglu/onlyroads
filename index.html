@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.120';
+const VERSION = '0.121';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -327,7 +327,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     if(!(src instanceof HTMLCanvasElement)) throw new Error('Poster renderer canvas not found');
 
     const {tx,ty} = parseTranslate(src.style.transform);
-    const ratioX = src.width  / work.clientWidth;   // devicePixelRatio-ish
+    const ratioX = src.width  / work.clientWidth;   // ≈ devicePixelRatio
     const ratioY = src.height / work.clientHeight;
 
     const dst = overlay.canvas;
@@ -335,16 +335,13 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     dctx.fillStyle='#0b1c3a';
     dctx.fillRect(0,0,dst.width,dst.height);
 
-    // Crop exactly the visible viewport
-    dctx.drawImage(
-      src,
-      -tx/ratioX,
-      -ty/ratioY,
-      src.width/ratioX,
-      src.height/ratioY,
-      0,0,
-      dst.width,dst.height
-    );
+    // --- FIXED CROP: multiply by DPR ratios, not divide ---
+    const sx = Math.max(0, -tx * ratioX);
+    const sy = Math.max(0, -ty * ratioY);
+    const sw = dst.width  * ratioX; // 1080 * dpr
+    const sh = dst.height * ratioY; // 1920 * dpr
+
+    dctx.drawImage(src, sx, sy, sw, sh, 0, 0, dst.width, dst.height);
 
     // === Manual overlays (routes & markers) ===
     dctx.lineCap='round'; dctx.lineJoin='round';
