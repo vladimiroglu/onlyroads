@@ -79,7 +79,7 @@ header.is-hidden{transform:translateY(-100%)} header.force-show{transform:transl
 .legend .item.is-active{border-color:#3a58a2;color:#e8f0ff;box-shadow:0 0 0 2px #3a58a215 inset}
 .legend .chip{width:14px;height:14px;border-radius:50%;border:1px solid #fff6}
 
-/* Menu (anchored to kebab — fixed) */
+/* Menu */
 .menu{position:fixed; z-index:11000;background:#0f2550;border:1px solid #223a6c;border-radius:12px;min-width:230px;display:none;box-shadow:0 12px 30px rgba(0,0,0,.35);overflow:hidden}
 .menu.show{display:block}
 .mi{padding:10px 14px;border-bottom:1px solid #193566;cursor:pointer;font-size:14.5px;letter-spacing:.2px}
@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.125';
+const VERSION = '0.126';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -268,14 +268,14 @@ document.addEventListener('click',e=>{
   if(outside&&menu.classList.contains('show')){ menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false); }
 });
 
-/* ===== Poster (standalone map area; width/offset params) ===== */
+/* ===== Poster (standalone map; width/offset params + width-first fit) ===== */
 const POSTER_CANVAS_W = 1080;     // poster width (px)
 const POSTER_CANVAS_H = 1920;     // poster height (px)
 const POSTER_LEFT_MARGIN  = 35;   // default left blank (px)
 const POSTER_RIGHT_MARGIN = 35;   // default right blank (px)
 // Explicit overrides (take precedence over margins if set)
-const POSTER_MAP_WIDTH_OVERRIDE = 1200; // e.g., 1010 or 3000
-const POSTER_MAP_X_OVERRIDE     = -50; // e.g., 35 or 0
+const POSTER_MAP_WIDTH_OVERRIDE = null; // e.g., 1010, 1200, 3000
+const POSTER_MAP_X_OVERRIDE     = null; // e.g., 35, 0, -50
 
 document.getElementById('miSave').addEventListener('click', async ()=>{
   menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
@@ -291,14 +291,14 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
       ? Number(POSTER_MAP_X_OVERRIDE)
       : POSTER_LEFT_MARGIN;
 
-    // Offscreen poster work area (no impact on live map)
+    // Offscreen poster work area
     const work = document.createElement('div');
     work.style.position='absolute'; work.style.left='-99999px'; work.style.top='-99999px';
     work.style.width=POSTER_CANVAS_W+'px'; work.style.height=POSTER_CANVAS_H+'px';
     work.style.overflow='hidden';
     document.body.appendChild(work);
 
-    // Map drawing area with exact width/height
+    // Map drawing area = exact width you want the map to occupy on the poster
     const mapArea = document.createElement('div');
     mapArea.style.position='absolute';
     mapArea.style.left='0px'; mapArea.style.top='0px';
@@ -335,9 +335,9 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
       }
     }).addTo(posterMap);
 
-    // Fit to width of mapArea
     const conusBoundsPoster = statesLayerPoster.getBounds();
-    posterMap.fitBounds(conusBoundsPoster, {padding:[0,0], animate:false});
+    // **Width-first fit**: ensures the map spans the mapArea width
+    fitByWidthExact(posterMap, conusBoundsPoster);
 
     // Wait for canvas to paint
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
@@ -358,10 +358,10 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     dctx.fillStyle='#0b1c3a';
     dctx.fillRect(0,0,POSTER_CANVAS_W,POSTER_CANVAS_H);
 
-    // Draw Leaflet canvas into poster at MAP_X
+    // Draw Leaflet canvas into poster at MAP_X (clip occurs naturally at poster edges)
     dctx.drawImage(src, 0, 0, src.width, src.height, MAP_X, 0, MAP_W, POSTER_CANVAS_H);
 
-    // Overlays (routes/markers)
+    // Overlays (routes/markers) using the posterMap's projection
     dctx.save();
     dctx.translate(MAP_X, 0);
     dctx.lineCap='round'; dctx.lineJoin='round';
@@ -390,7 +390,22 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
   }
 });
 
-/* ===== Poster helpers (RESTORED) ===== */
+/* ===== Poster helpers ===== */
+function fitByWidthExact(map, bounds){
+  map.fitBounds(bounds, { padding:[0,0], animate:false }); // seed zoom
+  const nw = bounds.getNorthWest(), ne = bounds.getNorthEast();
+  const pW = map.latLngToLayerPoint(nw);
+  const pE = map.latLngToLayerPoint(ne);
+  const curW = Math.abs(pE.x - pW.x);
+  const targetW = map.getSize().x;
+  if(curW>0 && targetW>0){
+    const factor = targetW/curW;
+    if(Math.abs(factor-1)>1e-6){
+      map.setZoom(map.getZoom()+Math.log2(factor), {animate:false});
+    }
+  }
+}
+
 function createPosterOverlay(){
   const el = document.createElement('div'); el.id='orPosterOverlay';
   const card = document.createElement('div'); card.className='orPosterCard';
@@ -868,14 +883,3 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
