@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.116';
+const VERSION = '0.117';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -269,7 +269,7 @@ document.addEventListener('click',e=>{
   if(outside&&menu.classList.contains('show')){ menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false); }
 });
 
-/* ===== Poster (Leaflet SVG offscreen + rasterize) ===== */
+/* ===== Poster (Leaflet SVG offscreen + rasterize, cropped to viewport) ===== */
 document.getElementById('miSave').addEventListener('click', async ()=>{
   menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
   try{
@@ -314,18 +314,14 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
 
     const conusBoundsPoster = statesLayerPoster.getBounds();
 
-    // width-first fit: make it touch left/right with ~35px safety
+    // width-first fit: touch left/right with 35px safety
     fitByWidthPoster(posterMap, conusBoundsPoster, {left:POSTER_SIDE_MARGIN, right:POSTER_SIDE_MARGIN, top:0, bottom:0});
 
     // routes (below markers)
     for(const t of trips){
       if(!t.cities || t.cities.length<2) continue;
       const pts = t.cities.map(c=>[c.lat,c.lon]);
-      const closed = (()=>{
-        if(pts.length<3) return false;
-        const a=pts[0], b=pts[pts.length-1];
-        return Math.hypot(a[0]-b[0], a[1]-b[1])<0.6;
-      })();
+      const closed = (()=>{ if(pts.length<3) return false; const a=pts[0], b=pts[pts.length-1]; return Math.hypot(a[0]-b[0], a[1]-b[1])<0.6; })();
       const path=buildSmoothPathAdaptive(pts,{closed});
       if(path){
         L.curve(path,{renderer:posterRenderer,color:t.color||'#45a3ff',weight:3}).addTo(posterMap);
@@ -342,13 +338,13 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     // let SVG render flush
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
 
-    // Grab the SVG container and rasterize it to the preview canvas
+    // Grab the SVG container and rasterize ONLY the viewport (cropped by Leaflet pan)
     const activeRenderer = posterMap.getRenderer(statesLayerPoster) || posterRenderer;
     const svgEl = (typeof activeRenderer.getContainer === 'function') ? activeRenderer.getContainer() : activeRenderer._container;
-    if(!(svgEl instanceof SVGSVGElement)){ throw new Error('Poster renderer SVG not found'); }
+    if(!(svgEl instanceof SVGSVGElement)) throw new Error('Poster renderer SVG not found');
 
+    const {tx,ty} = parseSvgPan(svgEl); // Leaflet pans with a <g transform="translate(tx,ty)">
     const svgClone = svgEl.cloneNode(true);
-    // Ensure proper sizing and namespace for rasterization
     svgClone.setAttribute('xmlns','http://www.w3.org/2000/svg');
     svgClone.setAttribute('width','1080');
     svgClone.setAttribute('height','1920');
@@ -362,11 +358,14 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     dctx.fillStyle='#0b1c3a';
     dctx.fillRect(0,0,dst.width,dst.height);
 
+    // Crop rect equals the visible viewport inside the giant SVG
+    const sx = -tx, sy = -ty, sw = 1080, sh = 1920;
+
     await new Promise((resolve, reject)=>{
       const img = new Image();
       img.onload = ()=>{ 
         try{
-          dctx.drawImage(img, 0, 0, dst.width, dst.height);
+          dctx.drawImage(img, sx, sy, sw, sh, 0, 0, dst.width, dst.height);
           URL.revokeObjectURL(url);
           resolve();
         }catch(e){ reject(e); }
@@ -382,6 +381,14 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     toast('Could not create poster');
   }
 });
+
+// Parse Leaflet SVG pan translate from the root <g>
+function parseSvgPan(svg){
+  const g = svg.querySelector('g[transform*="translate"]') || svg.querySelector('g');
+  if(!g){ return {tx:0, ty:0}; }
+  const m = /translate\(\s*([-\d.]+)[ ,]\s*([-\d.]+)\s*\)/i.exec(g.getAttribute('transform')||'');
+  return { tx: m ? parseFloat(m[1])||0 : 0, ty: m ? parseFloat(m[2])||0 : 0 };
+}
 
 function parseTranslate(transformStr){
   const s = transformStr || '';
