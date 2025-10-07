@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.126';
+const VERSION = '0.127';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -222,14 +222,14 @@ const controls=document.getElementById('controls'),
 const list=document.getElementById('cityList'), emptyListHint=document.getElementById('emptyListHint');
 const legendEl=document.getElementById('legend');
 const toastEl=document.getElementById('toast'); let toastTimer=null;
-function toast(t){toastEl.textContent=t;toastEl.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>toastEl.classList.remove('show'),1600);}
+function toast(t){toastEl.textContent=t;toastEl.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>toastEl.classList.remove('show'),1600);} 
 
 /* Color picker refs */
 const cp=document.getElementById('colorPicker'), cpSwatches=document.getElementById('cpSwatches'), cpCustom=document.getElementById('cpCustom'), cpClose=document.getElementById('cpClose');
 
 /* ===== App state ===== */
 let trips=[],activeTripId=null,tripCounter=0,cidCounter=0,selectedId=null;
-function getActiveTrip(){return trips.find(t=>t.id===activeTripId);}
+function getActiveTrip(){return trips.find(t=>t.id===activeTripId);} 
 
 /* ===== Header/menu ===== */
 const kebabBtn=document.getElementById('kebabBtn'); const menu=document.getElementById('menu');
@@ -261,7 +261,7 @@ kebabBtn.addEventListener('click',(e)=>{
   else { menu.classList.remove('show'); }
   window.OnlyRoadsHeader?.forceShow(willShow);
 });
-window.addEventListener('resize', positionMenu, {passive:true});
+window.addEventListener('resize,', positionMenu, {passive:true});
 window.addEventListener('scroll', positionMenu, {passive:true});
 document.addEventListener('click',e=>{
   const outside=!menu.contains(e.target)&&e.target!==kebabBtn;
@@ -350,6 +350,9 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
 
     if(!(src instanceof HTMLCanvasElement)) throw new Error('Poster renderer canvas not found');
 
+    // Get the pane offset applied by Leaflet's CSS transform
+    const panePos = L.DomUtil.getPosition(src) || L.point(0,0);
+
     // Destination
     const dst = overlay.canvas;
     const dctx = dst.getContext('2d');
@@ -363,7 +366,8 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
 
     // Overlays (routes/markers) using the posterMap's projection
     dctx.save();
-    dctx.translate(MAP_X, 0);
+    // Align overlay container coordinates with the base image by subtracting the pane offset
+    dctx.translate(MAP_X - panePos.x, -panePos.y);
     dctx.lineCap='round'; dctx.lineJoin='round';
     for(const t of trips){
       if(!t.cities || t.cities.length<2) continue;
@@ -424,7 +428,7 @@ function createPosterOverlay(){
       const a=document.createElement('a'); a.href=canvas.toDataURL('image/png'); a.download=`onlyroads_poster_${Date.now()}.png`; a.click();
     }catch(e){ console.error(e); toast('Download failed'); }
   };
-  const close = document.createElement('button'); close.className='orPosterBtn'; close.textContent='Close'; close.onclick=()=>el.remove();
+  const close = document.createElement('button'); close.className='orPosterBtn'; close.textContent='Close'; close.onclick()=>el.remove();
 
   btns.append(dl,close); top.append(title,btns);
   const stage=document.createElement('div'); stage.className='orPosterStage'; stage.appendChild(canvas);
@@ -783,7 +787,7 @@ function _controls(p0,p1,p2,p3,tau){
   const dx10=_scaledDx(p0,p1), dx21=_scaledDx(p1,p2), dx32=_scaledDx(p2,p3);
   const k=(tau/6)*CURVE_GAIN; const avg1=((p0[0]+p1[0])/2)*Math.PI/180, avg2=((p2[0]+p3[0])/2)*Math.PI/180;
   const c1=[ p1[0]+k*(p2[0]-p0[0]),  p1[1]+k*((dx21+dx10)/(Math.cos(avg1)||1)) ];
-  const c2=[ p2[0]-k*(p3[0]-p1[0]),  p2[1]-k*((dx32+dx21)/(Math.cos(avg2)||1)) ];
+  const c2=[ p2[0]-k*(p3[0]-p1[0]),  p2[1]-k*((dx32+dx21)/((Math.cos(avg2)||1))) ];
   return [c1,c2];
 }
 function buildSmoothPathAdaptive(points,{closed=false}={}){
@@ -883,7 +887,3 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
-
-
-
-
