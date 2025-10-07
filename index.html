@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.121';
+const VERSION = '0.122';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -206,7 +206,7 @@ const CURVE_GAIN=1.25;
 
 /* Fit config */
 const MAP_MARGINS = { top:5, right:5, bottom:5, left:5 };
-const POSTER_SIDE_MARGIN = 35;
+const POSTER_SIDE_MARGIN = 35; // exact 35px gutters left/right on poster
 const HEIGHT_FIT_SAFETY = 1;
 
 const mapCounter=document.getElementById('mapCounter');
@@ -313,7 +313,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
 
     const conusBoundsPoster = statesLayerPoster.getBounds();
 
-    // WIDTH-ONLY fit with 35px left/right
+    // WIDTH-ONLY fit with 35px left/right (no top/bottom padding)
     fitByWidthPoster(posterMap, conusBoundsPoster, {left:POSTER_SIDE_MARGIN, right:POSTER_SIDE_MARGIN, top:0, bottom:0});
 
     // Let Canvas render
@@ -335,7 +335,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     dctx.fillStyle='#0b1c3a';
     dctx.fillRect(0,0,dst.width,dst.height);
 
-    // --- FIXED CROP: multiply by DPR ratios, not divide ---
+    // Fixed crop using DPR-scaled offsets to preserve exact 35px side gutters
     const sx = Math.max(0, -tx * ratioX);
     const sy = Math.max(0, -ty * ratioY);
     const sw = dst.width  * ratioX; // 1080 * dpr
@@ -426,7 +426,7 @@ function fitByWidthPoster(m, bounds, pad){
     const factor=targetW/curW;
     if(factor>0 && Math.abs(factor-1)>1e-6) m.setZoom(m.getZoom()+Math.log2(factor),{animate:false});
   }
-  // Do NOT back off for height—left/right gutters are the constraint.
+  // Left/right gutters are the only constraint; no height back-off.
 }
 
 function createPosterOverlay(){
