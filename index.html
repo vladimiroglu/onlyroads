@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.123';
+const VERSION = '0.122';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -206,8 +206,7 @@ const CURVE_GAIN=1.25;
 
 /* Fit config */
 const MAP_MARGINS = { top:5, right:5, bottom:5, left:5 };
-const POSTER_SIDE_MARGIN = 35; // exact gutters
-const POSTER_MAP_WIDTH = 1010; // hard-coded map width
+const POSTER_SIDE_MARGIN = 35;
 const HEIGHT_FIT_SAFETY = 1;
 
 const mapCounter=document.getElementById('mapCounter');
@@ -263,41 +262,36 @@ kebabBtn.addEventListener('click',(e)=>{
   else { menu.classList.remove('show'); }
   window.OnlyRoadsHeader?.forceShow(willShow);
 });
-window.addEventListener('resize, scroll', positionMenu, {passive:true});
+window.addEventListener('resize', positionMenu, {passive:true});
+window.addEventListener('scroll', positionMenu, {passive:true});
 document.addEventListener('click',e=>{
   const outside=!menu.contains(e.target)&&e.target!==kebabBtn;
   if(outside&&menu.classList.contains('show')){ menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false); }
 });
 
-/* ===== Poster (hard-coded 1010px map width, centered with 35px gutters) ===== */
+/* ===== Poster (strict 35px gutters via crop of 1010px center) ===== */
 document.getElementById('miSave').addEventListener('click', async ()=>{
   menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
   try{
     const overlay = createPosterOverlay();
     document.body.appendChild(overlay.el);
 
-    // Offscreen poster surface (outer) at 1080x1920
-    const workOuter = document.createElement('div');
-    workOuter.style.position='absolute'; workOuter.style.left='-99999px'; workOuter.style.top='-99999px';
-    workOuter.style.width='1080px'; workOuter.style.height='1920px';
-    document.body.appendChild(workOuter);
-
-    // Inner map container at exactly 1010px width, full height; centered would be 35px margins
+    // Offscreen map at poster size
     const work = document.createElement('div');
-    work.style.width = POSTER_MAP_WIDTH + 'px';
-    work.style.height = '1920px';
-    workOuter.appendChild(work);
+    work.style.position='absolute'; work.style.left='-99999px'; work.style.top='-99999px';
+    work.style.width='1080px'; work.style.height='1920px';
+    document.body.appendChild(work);
 
-    // Leaflet map on the 1010px-wide container
+    // Leaflet (canvas)
     const posterMap = L.map(work,{
       zoomControl:false,attributionControl:false,
       dragging:false,scrollWheelZoom:false,doubleClickZoom:false,
       boxZoom:false,keyboard:false,touchZoom:false,worldCopyJump:false,
       zoomSnap:0, zoomDelta:0.25, preferCanvas:true, fadeAnimation:false, zoomAnimation:false
     });
-    posterMap.invalidateSize(true);
+    posterMap.invalidateSize(false);
 
-    // Load states and draw
+    // States
     const geo = await fetch("https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json").then(r=>r.json());
     const conus = geo.features.filter(f=>!["Alaska","Hawaii","Puerto Rico"].includes(f.properties.name));
     const statesFC = {type:"FeatureCollection",features:conus};
@@ -319,81 +313,84 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
 
     const conusBoundsPoster = statesLayerPoster.getBounds();
 
-    // Fit by width within the 1010px container (no side padding inside the map)
-    fitByWidthPoster(posterMap, conusBoundsPoster, {left:0, right:0, top:0, bottom:0});
+    // Fit by width with 35px left/right padding for geometry
+    fitByWidthPoster(posterMap, conusBoundsPoster, {left:POSTER_SIDE_MARGIN, right:POSTER_SIDE_MARGIN, top:0, bottom:0});
 
-    // Allow Canvas render to flush
+    // Flush render
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
 
-    // Extract Leaflet's canvas and translate to poster canvas
+    // Source canvas from Leaflet renderer
     const activeRenderer = posterMap.getRenderer(statesLayerPoster);
     const src = (typeof activeRenderer.getContainer === 'function')
                   ? activeRenderer.getContainer()
-                  : activeRenderer._container; // <canvas>
+                  : activeRenderer._container;
     if(!(src instanceof HTMLCanvasElement)) throw new Error('Poster renderer canvas not found');
 
     const {tx,ty} = parseTranslate(src.style.transform);
-    const ratioX = src.width  / work.clientWidth;   // DPR scale
+    const ratioX = src.width  / work.clientWidth;   // DPR
     const ratioY = src.height / work.clientHeight;
 
-    const dst = overlay.canvas; // 1080 x 1920
+    const dst = overlay.canvas; // 1080x1920
     const dctx = dst.getContext('2d');
     dctx.fillStyle='#0b1c3a';
     dctx.fillRect(0,0,dst.width,dst.height);
 
-    // Crop from source canvas using DPR-aware offsets
-    const sx = Math.max(0, -tx * ratioX);
+    // STRICT GUTTERS: crop central 1010px and draw at x=35
+    const leftPad = POSTER_SIDE_MARGIN;            // 35
+    const targetW = dst.width - 2*leftPad;         // 1010
+    const sx = Math.max(0, -tx * ratioX) + leftPad * ratioX;
     const sy = Math.max(0, -ty * ratioY);
-    const sw = POSTER_MAP_WIDTH * ratioX; // exact 1010px width in source pixels
-    const sh = dst.height * ratioY;       // full height
+    const sw = targetW * ratioX;
+    const sh = dst.height * ratioY;
 
-    // Draw the 1010px-wide map centered at x=35 on the poster canvas
-    dctx.drawImage(src, sx, sy, sw, sh, POSTER_SIDE_MARGIN, 0, POSTER_MAP_WIDTH, dst.height);
+    dctx.drawImage(src, sx, sy, sw, sh, leftPad, 0, targetW, dst.height);
 
-    // === Manual overlays (routes & markers), projected via posterMap ===
-    dctx.lineCap='round'; dctx.lineJoin='round';
+    // Overlays (shift drawing by +35px)
+    dctx.save();
+    dctx.translate(leftPad, 0);
 
     // Routes
+    dctx.lineCap='round'; dctx.lineJoin='round';
     for(const t of trips){
       if(!t.cities || t.cities.length<2) continue;
       const pts = t.cities.map(c=>[c.lat,c.lon]);
       const closed = (()=>{ if(pts.length<3) return false; const a=pts[0], b=pts[pts.length-1]; return Math.hypot(a[0]-b[0], a[1]-b[1])<0.6; })();
       const path=buildSmoothPathAdaptive(pts,{closed});
       if(!path) continue;
-      // shift drawing by +35px since our map is inset
-      drawPathLatLngShifted(dctx, posterMap, path, t.color||'#45a3ff', 3, POSTER_SIDE_MARGIN, 0);
+      drawPathLatLng(dctx, posterMap, path, t.color||'#45a3ff', 3);
     }
 
     // Markers
     for(const t of trips){
       for(const c of t.cities||[]){
         const p = posterMap.latLngToContainerPoint([c.lat,c.lon]);
-        drawMarker(dctx, POSTER_SIDE_MARGIN + p.x, p.y, 4, '#ffffff', 1, '#ff0000');
+        drawMarker(dctx, p.x, p.y, 4, '#ffffff', 1, '#ff0000');
       }
     }
+    dctx.restore();
 
     // Cleanup
-    posterMap.remove(); workOuter.remove();
+    posterMap.remove(); work.remove();
   }catch(err){
     console.error(err);
     toast('Could not create poster');
   }
 });
 
-// Poster helpers (with horizontal shift to account for 35px inset)
-function drawPathLatLngShifted(ctx, map, path, color, width, dx, dy){
+// Helpers for poster overlays
+function drawPathLatLng(ctx, map, path, color, width){
   ctx.beginPath();
   for(let i=0;i<path.length;){
     const cmd = path[i];
     if(cmd==='M'){
       const p = map.latLngToContainerPoint(path[i+1]);
-      ctx.moveTo(dx + p.x, dy + p.y);
+      ctx.moveTo(p.x, p.y);
       i+=2;
     }else if(cmd==='C'){
       const c1 = map.latLngToContainerPoint(path[i+1]);
       const c2 = map.latLngToContainerPoint(path[i+2]);
       const p  = map.latLngToContainerPoint(path[i+3]);
-      ctx.bezierCurveTo(dx + c1.x,dy + c1.y,dx + c2.x,dy + c2.y,dx + p.x,dy + p.y);
+      ctx.bezierCurveTo(c1.x,c1.y,c2.x,c2.y,p.x,p.y);
       i+=4;
     }else if(cmd==='Z'){
       ctx.closePath(); i+=1;
@@ -411,6 +408,7 @@ function drawMarker(ctx, x, y, r, stroke, sw, fill){
   ctx.fillStyle=fill; ctx.fill();
   ctx.lineWidth=sw; ctx.strokeStyle=stroke; ctx.stroke();
 }
+
 function parseTranslate(transformStr){
   const s = transformStr || '';
   const m3 = /translate3d\(\s*([-\d.]+)px\s*,\s*([-\d.]+)px/i.exec(s);
@@ -419,6 +417,7 @@ function parseTranslate(transformStr){
   if(m2) return {tx:parseFloat(m2[1])||0, ty:parseFloat(m2[2])||0};
   return {tx:0, ty:0};
 }
+
 function fitByWidthPoster(m, bounds, pad){
   const left=pad.left||0, right=pad.right||0, top=pad.top||0, bottom=pad.bottom||0;
   m.fitBounds(bounds,{paddingTopLeft:[left,top], paddingBottomRight:[right,bottom], animate:false});
@@ -432,9 +431,34 @@ function fitByWidthPoster(m, bounds, pad){
     const factor=targetW/curW;
     if(factor>0 && Math.abs(factor-1)>1e-6) m.setZoom(m.getZoom()+Math.log2(factor),{animate:false});
   }
+  // No height back-off; width is the constraint.
 }
 
-/* ===== Share & feedback ===== */
+function createPosterOverlay(){
+  const el = document.createElement('div'); el.id='orPosterOverlay';
+  const card = document.createElement('div'); card.className='orPosterCard';
+  const top = document.createElement('div'); top.className='orPosterTop';
+  const title = document.createElement('div'); title.className='orPosterTitle'; title.textContent='Poster Preview';
+  const btns = document.createElement('div'); btns.className='orPosterBtns';
+
+  const canvas = document.createElement('canvas');
+  canvas.className='orPosterCanvas'; canvas.width=1080; canvas.height=1920;
+
+  const dl = document.createElement('button'); dl.className='orPosterBtn'; dl.textContent='Download PNG';
+  dl.onclick=()=>{
+    try{
+      const a=document.createElement('a'); a.href=canvas.toDataURL('image/png'); a.download=`onlyroads_poster_${Date.now()}.png`; a.click();
+    }catch(e){ console.error(e); toast('Download failed'); }
+  };
+  const close = document.createElement('button'); close.className='orPosterBtn'; close.textContent='Close'; close.onclick=()=>el.remove();
+
+  btns.append(dl,close); top.append(title,btns);
+  const stage=document.createElement('div'); stage.className='orPosterStage'; stage.appendChild(canvas);
+  card.append(top,stage); el.appendChild(card);
+  return {el, canvas};
+}
+
+/* ===== Share & feedback (restored) ===== */
 document.getElementById('miShare').addEventListener('click', async ()=>{
   menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
   const url=updateShareURL();
@@ -448,7 +472,7 @@ document.getElementById('miFeedback').addEventListener('click', ()=>{
   location.href=`mailto:?subject=${encodeURIComponent('OnlyRoads feedback')}&body=${encodeURIComponent('Feedback:\n\n')}`;
 });
 
-/* ===== Trips UI (unchanged) ===== */
+/* ===== Trips UI ===== */
 function refreshTripUI(){
   tripSelect.innerHTML='';
   trips.forEach(t=>{const o=document.createElement('option');o.value=t.id;o.textContent=t.name;if(t.id===activeTripId)o.selected=true;tripSelect.appendChild(o);});
@@ -512,13 +536,6 @@ document.getElementById('deleteTripBtn').addEventListener('click',()=>{
 
 /* ===== Color picker ===== */
 (function initColorPicker(){
-  const tripColorBtn=document.getElementById('tripColorBtn');
-  const tripColorChip=document.getElementById('tripColorChip');
-  const cp=document.getElementById('colorPicker');
-  const cpSwatches=document.getElementById('cpSwatches');
-  const cpCustom=document.getElementById('cpCustom');
-  const cpClose=document.getElementById('cpClose');
-
   cpSwatches.innerHTML='';
   PALETTE.forEach(hex=>{
     const b=document.createElement('button'); b.className='cp-swatch'; b.style.background=hex; b.setAttribute('aria-label',`Choose ${hex}`);
@@ -549,14 +566,14 @@ document.getElementById('deleteTripBtn').addEventListener('click',()=>{
   };
 })();
 
-/* ===== Autocomplete (unchanged) ===== */
+/* ===== Autocomplete ===== */
 let acTimer=null;
 let acItemsCache=[];
 const headerEl = document.querySelector('header');
 function headerHeight(){ return headerEl?.getBoundingClientRect().height || 0; }
 function ensureCityBoxVisible(instant=false){ const r=controls.getBoundingClientRect(); const topTarget=(window.scrollY+r.top)-headerHeight()-8; window.scrollTo({top:Math.max(0,topTarget),behavior:instant?'auto':'smooth'}); }
 function resizeAutocompleteForViewport(){ const inputRect=input.getBoundingClientRect(); const vv=window.visualViewport; const viewportBottom=vv?(vv.offsetTop+vv.height):window.innerHeight; const available=Math.max(120,viewportBottom-inputRect.bottom-8); ac.style.maxHeight=`${Math.floor(available)}px`; }
-function keyboardAwarePadding(on){ if(on && window.visualViewport){ const vv=window.visualViewport; const kb=Math.max(0, window.innerHeight - (vv.height||window.innerHeight)); document.body.style.paddingBottom=`${kb+16}px`; }else{ document.body.style.paddingBottom=''; }
+function keyboardAwarePadding(on){ if(on && window.visualViewport){ const vv=window.visualViewport; const kb=Math.max(0, window.innerHeight - (vv.height||window.innerHeight)); document.body.style.paddingBottom=`${kb+16}px`; }else{ document.body.style.paddingBottom=''; } }
 
 function handlePickIndex(idx){
   const it = acItemsCache[idx];
@@ -612,9 +629,252 @@ if (window.visualViewport) {
 }
 document.addEventListener('click',e=>{ if(!ac.contains(e.target)&&e.target!==input) ac.classList.remove('show'); });
 
-/* ===== Sortable, Legend, Live Map, Share/Serialize boot (unchanged) ===== */
-/* ... keep your existing implementations unchanged ... */
+/* ===== Sortable ===== */
+new Sortable(list,{handle:'.li',animation:150,
+  onChoose:e=>{selectedId=+e.item.dataset.id;updateSelectionVisuals();},
+  onEnd:()=>{const t=getActiveTrip();if(!t)return;const ids=[...list.children].filter(n=>n.classList.contains('li')).map(li=>+li.dataset.id);t.cities.sort((a,b)=>ids.indexOf(a.id)-ids.indexOf(b.id));updateMap();}
+});
+function renderList(){
+  list.querySelectorAll('.li').forEach(n=>n.remove());
+  const t=getActiveTrip(); if(!t){emptyListHint.style.display='none';return;}
+  if(t.cities.length===0){emptyListHint.style.display='grid'; emptyListHint.textContent='Add cities using the box above';}
+  else emptyListHint.style.display='none';
+  t.cities.forEach(c=>{
+    const row=document.createElement('div'); row.className='li'; row.dataset.id=c.id;
+    row.innerHTML=`<div class="handle">⋮⋮</div><div class="name">${c.name}, ${c.stateAbbr}</div><button class="remove">×</button>`;
+    row.querySelector('.remove').onclick=(ev)=>{ev.stopPropagation(); removeCityById(c.id)};
+    row.addEventListener('click',(ev)=>{ if(ev.target.closest('.remove'))return; selectedId=(selectedId===c.id?null:c.id); updateSelectionVisuals(); });
+    if(selectedId===c.id) row.classList.add('li-selected');
+    list.appendChild(row);
+  });
+}
 
+/* ===== Legend ===== */
+function renderLegend(){
+  legendEl.innerHTML='';
+  if(!trips.length){ legendEl.classList.remove('show'); return; }
+  trips.forEach(t=>{
+    const btn=document.createElement('button');
+    btn.className='item'; btn.type='button';
+    btn.setAttribute('data-id', t.id);
+    btn.setAttribute('aria-label', `Switch to ${t.name}`);
+    btn.setAttribute('aria-pressed', String(t.id===activeTripId));
+    btn.innerHTML=`<span class="chip" style="background:${t.color}"></span><span>${t.name}</span>`;
+    btn.addEventListener('click', ()=> activateTripById(t.id));
+    btn.addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); activateTripById(t.id); }});
+    legendEl.appendChild(btn);
+  });
+  legendEl.classList.add('show');
+  highlightLegendActive();
+}
+function highlightLegendActive(){
+  [...legendEl.children].forEach(el=>{
+    const isActive = +el.getAttribute('data-id') === activeTripId;
+    el.classList.toggle('is-active', isActive);
+    el.setAttribute('aria-pressed', String(isActive));
+  });
+}
+function activateTripById(id){
+  if(activeTripId === id) return;
+  activeTripId = id;
+  for(const opt of tripSelect.options){ opt.selected = (+opt.value === id); }
+  renderList(); updateMap(); updateEmptyState(); highlightLegendActive(); updateShareURL();
+}
+
+/* ===== Map / drawing (live map) ===== */
+let map, statesLayer, stateLayerByName={}, conusBounds=null;
+let markerById={}, routeLines={}, unlockedStates=new Set();
+
+function initMap(){
+  map=L.map('map',{
+    zoomControl:false,attributionControl:false,
+    dragging:false,scrollWheelZoom:false,doubleClickZoom:false,
+    boxZoom:false,keyboard:false,touchZoom:false,worldCopyJump:false,
+    zoomSnap:0, zoomDelta:0.25
+  });
+  map.createPane('statesPane');
+  map.createPane('routesPane');
+  map.createPane('markersPane');
+
+  fetch("https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json")
+    .then(r=>r.json()).then(geo=>{
+      const conus=geo.features.filter(f=>!["Alaska","Hawaii","Puerto Rico"].includes(f.properties.name));
+
+      statesLayer=L.geoJSON({type:"FeatureCollection",features:conus},{
+        pane:'statesPane',
+        style:()=>({color:'#ffffff',weight:1,fillColor:'#0b1c3a',fillOpacity:1}),
+        onEachFeature:(f,l)=>{stateLayerByName[f.properties.name]=l;}
+      }).addTo(map);
+
+      const tmp=L.geoJSON({type:"FeatureCollection",features:conus}); conusBounds=tmp.getBounds();
+
+      map.setMaxBounds(conusBounds.pad(0.02));
+
+      fitUS_HeightFirst();
+      refreshAllStateStyles(); updateMap();
+
+      const mapNode=document.getElementById('map');
+      const ro=new ResizeObserver(()=>{ map.invalidateSize(false); fitUS_HeightFirst(); });
+      ro.observe(mapNode);
+      window.addEventListener('beforeunload', ()=> ro.disconnect(), {once:true});
+    });
+}
+
+/* --- Height-first fit (live map) --- */
+function setZoomByFactor(f){ if(f>0 && f!==1){ map.setZoom(map.getZoom()+Math.log2(f),{animate:false}); } }
+function fitByHeight(bounds, m){
+  if(!bounds || !map) return;
+
+  map.fitBounds(bounds,{
+    paddingTopLeft:[m.left,m.top],
+    paddingBottomRight:[m.right,m.bottom],
+    animate:false
+  });
+
+  const size=map.getSize();
+  const targetH = Math.max(1, size.y - (m.top+m.bottom));
+  const nw=bounds.getNorthWest(), sw=bounds.getSouthWest(), ne=bounds.getNorthEast();
+  const pN=map.latLngToLayerPoint(nw), pS=map.latLngToLayerPoint(sw), pW=map.latLngToLayerPoint(nw), pE=map.latLngToLayerPoint(ne);
+  const curH=Math.abs(pN.y - pS.y);
+
+  if(curH>0 && targetH>0){
+    const factor=(targetH/curH)*HEIGHT_FIT_SAFETY;
+    setZoomByFactor(factor);
+  }
+
+  const maxW = Math.max(1, size.x - (m.left+m.right));
+  const curW=Math.abs(pE.x - pW.x);
+  if(curW>maxW){ setZoomByFactor(maxW/curW); }
+}
+function fitUS_HeightFirst(){ fitByHeight(conusBounds, MAP_MARGINS); }
+
+/* Styles */
+function applyStateStyle(name,selected){
+  const layer=stateLayerByName[name]; if(!layer) return;
+  if(selected){
+    layer.setStyle({fillColor:'#ffffff',fillOpacity:1,color:'#0b1c3a',weight:2});
+  }else{
+    layer.setStyle({fillColor:'#0b1c3a',fillOpacity:1,color:'#ffffff',weight:1});
+  }
+}
+function refreshAllStateStyles(){ Object.keys(stateLayerByName).forEach(n=>applyStateStyle(n,unlockedStates.has(n))); }
+
+function markerStyle(isSelected){ return { radius:DOT_RADIUS, color:'#ffffff', weight:DOT_WEIGHT, fillColor:isSelected?GREEN:RED, fillOpacity:1, pane:'markersPane', className:'or-marker-glow', interactive:false }; }
+function updateSelectionVisuals(){
+  [...list.children].forEach(li=>{ if(!li.classList.contains('li')) return; +li.dataset.id===selectedId ? li.classList.add('li-selected') : li.classList.remove('li-selected');});
+  for(const id in markerById){ const m=markerById[id]; if(m){ m.setStyle(markerStyle(+id===selectedId)); } }
+}
+function updateCounter(){ mapCounter.textContent=`${unlockedStates.size}/50`; }
+function recomputeUnlockedFromCities(){
+  unlockedStates.clear();
+  trips.forEach(t=>t.cities.forEach(c=>{ const canon=canonicalStateName(c.stateFull||c.stateAbbr); if(canon && stateLayerByName[canon]) unlockedStates.add(canon); }));
+  updateCounter(); refreshAllStateStyles();
+}
+
+/* Curves (reused for poster path generation) */
+function _scaledDx(p1,p2){ const avg=((p1[0]+p2[0])/2)*Math.PI/180; return (p2[1]-p1[1])*Math.cos(avg); }
+function adaptiveTauFor(p1,p2){ const dx=Math.abs(_scaledDx(p1,p2)), dy=Math.abs(p2[0]-p1[0]), d=Math.hypot(dx,dy); const r=dx/(dx+dy+1e-9); let tau=0.62+(r-0.5)*0.36+Math.min(d/5,1)*0.16; return Math.max(0.5,Math.min(0.85,tau)); }
+function _controls(p0,p1,p2,p3,tau){
+  const dx10=_scaledDx(p0,p1), dx21=_scaledDx(p1,p2), dx32=_scaledDx(p2,p3);
+  const k=(tau/6)*CURVE_GAIN; const avg1=((p0[0]+p1[0])/2)*Math.PI/180, avg2=((p2[0]+p3[0])/2)*Math.PI/180;
+  const c1=[ p1[0]+k*(p2[0]-p0[0]),  p1[1]+k*((dx21+dx10)/(Math.cos(avg1)||1)) ];
+  const c2=[ p2[0]-k*(p3[0]-p1[0]),  p2[1]-k*((dx32+dx21)/(Math.cos(avg2)||1)) ];
+  return [c1,c2];
+}
+function buildSmoothPathAdaptive(points,{closed=false}={}){
+  if(points.length<2) return null;
+  const pts=points.slice();
+  if(closed){ pts.unshift(points[points.length-2]||points[0]); pts.push(points[1]||points[0]); }
+  else { pts.unshift(points[0]); pts.push(points[points.length-1]); }
+  const path=['M', points[0]];
+  for(let i=0;i<points.length-1;i++){
+    const p0=pts[i], p1=pts[i+1], p2=pts[i+2], p3=pts[i+3];
+    const tau=adaptiveTauFor(p1,p2);
+    const [c1,c2]=_controls(p0,p1,p2,p3,tau);
+    path.push('C', c1, c2, p2);
+  }
+  if(closed) path.push('Z');
+  return path;
+}
+function isClosed(points){ if(points.length<3) return false; const a=points[0], b=points[points.length-1]; return Math.hypot(a[0]-b[0],a[1]-b[1])<0.6; }
+
+function updateMap(){
+  if(!map) return;
+  for(const id in markerById){ if(markerById[id]) map.removeLayer(markerById[id]); }
+  markerById={};
+  Object.values(routeLines).forEach(l=>{ if(l) map.removeLayer(l); }); routeLines={};
+
+  trips.forEach(t=>{
+    t.cities.forEach(c=>{
+      markerById[c.id]=L.circleMarker([c.lat,c.lon], markerStyle(c.id===selectedId)).addTo(map);
+    });
+  });
+
+  trips.forEach(t=>{
+    if(t.cities.length>1){
+      const pts=t.cities.map(c=>[c.lat,c.lon]);
+      const closed=isClosed(pts);
+      const path=buildSmoothPathAdaptive(pts,{closed});
+      if(path){ routeLines[t.id]=L.curve(path,{pane:'routesPane',className:'route',color:t.color,weight:3}).addTo(map); }
+    }
+  });
+
+  fitUS_HeightFirst(); updateSelectionVisuals();
+}
+
+/* City add/remove */
+function addCity(item){
+  const t=getActiveTrip(); if(!t){toast('Create a trip first (tap +)');return;}
+  item.id=++cidCounter; t.cities.push(item);
+  recomputeUnlockedFromCities(); updateMap(); renderList(); updateSelectionVisuals(); updateEmptyState();
+  toast(`Added ${item.name}, ${item.stateAbbr}`);
+}
+function removeCityById(id){
+  const t=getActiveTrip(); if(!t) return;
+  const idx=t.cities.findIndex(c=>c.id===id); if(idx===-1) return;
+  const removed=t.cities[idx]; t.cities.splice(idx,1);
+  if(selectedId===id) selectedId=null;
+  recomputeUnlockedFromCities(); updateMap(); renderList(); updateSelectionVisuals(); updateEmptyState();
+  toast(`Removed ${removed.name}, ${removed.stateAbbr}`);
+}
+
+/* Serialize/share */
+function serializeState(){ return trips.map(t=>({n:t.name,color:t.color,c:t.cities.map(c=>({n:c.name,st:c.stateAbbr,lat:+c.lat.toFixed(5),lon:+c.lon.toFixed(5)}))})); }
+function deserializeState(obj){
+  trips=[]; activeTripId=null; tripCounter=0; cidCounter=0; selectedId=null;
+  (obj||[]).forEach(bundle=>{
+    const id=++tripCounter;
+    const t={id,name:bundle.n||`Trip ${id}`,color:bundle.color||PALETTE[(id-1)%PALETTE.length],cities:[]};
+    (bundle.c||[]).forEach(cc=>t.cities.push({id:++cidCounter,name:cc.n,stateAbbr:cc.st,stateFull:ABBR_TO_NAME[cc.st],lat:+cc.lat,lon:+cc.lon}));
+    trips.push(t); activeTripId=id;
+  });
+  refreshTripUI(); renderList(); recomputeUnlockedFromCities(); updateMap(); updateEmptyState();
+}
+function updateShareURL(){
+  const enc = new TextEncoder();
+  const serialized = JSON.stringify(serializeState());
+  const b64 = btoa(String.fromCharCode(...enc.encode(serialized)));
+  const url=new URL(location.href);
+  const newHash='s='+b64;
+  if(url.hash!==('#'+newHash)){
+    url.hash=newHash; history.replaceState(null,'',url.toString());
+  }
+  return url.toString();
+}
+
+/* Boot */
+document.addEventListener('DOMContentLoaded', ()=>{
+  initMap();
+  updateEmptyState();
+  const h=new URL(location.href).hash;
+  if(h.startsWith('#s=')){
+    try{
+      const bin = atob(h.slice(3));
+      const arr = Uint8Array.from(bin, c => c.charCodeAt(0));
+      deserializeState(JSON.parse(new TextDecoder().decode(arr)));
+    }catch(e){}
+  }
+});
 </script>
 </body>
 </html>
