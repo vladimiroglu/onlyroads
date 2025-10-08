@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.129';
+const VERSION = '0.130';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -339,14 +339,51 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     // **Width-first fit** (UNCHANGED)
     fitByWidthExact(posterMap, conusBoundsPoster);
 
-    // Wait for canvas to paint
+    // Ensure states paint
+    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+
+    // Reuse the SAME renderer for all poster overlays
+    const renderer = posterMap.getRenderer(statesLayerPoster);
+
+    // === Plan A: create Leaflet overlays on the poster map ===
+    const posterOverlayGroup = L.layerGroup([], { renderer }).addTo(posterMap);
+
+    // Routes
+    for (const t of trips) {
+      if (!t.cities || t.cities.length < 2) continue;
+      const pts = t.cities.map(c => [c.lat, c.lon]);
+      const closed = (pts.length>=3 && Math.hypot(pts[0][0]-pts[pts.length-1][0], pts[0][1]-pts[pts.length-1][1])<0.6);
+      const path = buildSmoothPathAdaptive(pts, { closed });
+      if (!path) continue;
+      L.curve(path, {
+        color: t.color || '#45a3ff',
+        weight: 3,
+        opacity: 1,
+        interactive: false,
+        renderer
+      }).addTo(posterOverlayGroup);
+    }
+
+    // City markers
+    for (const t of trips) {
+      for (const c of t.cities || []) {
+        L.circleMarker([c.lat, c.lon], {
+          radius: DOT_RADIUS,
+          color: '#ffffff',
+          weight: DOT_WEIGHT,
+          fillColor: RED,
+          fillOpacity: 1,
+          interactive: false,
+          renderer
+        }).addTo(posterOverlayGroup);
+      }
+    }
+
+    // Let Leaflet paint curves + markers
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
 
     // Source canvas from the active Canvas renderer
-    const activeRenderer = posterMap.getRenderer(statesLayerPoster);
-    const src = (typeof activeRenderer.getContainer === 'function')
-                  ? activeRenderer.getContainer()
-                  : activeRenderer._container;
+    const src = (typeof renderer.getContainer === 'function') ? renderer.getContainer() : renderer._container;
     if(!(src instanceof HTMLCanvasElement)) throw new Error('Poster renderer canvas not found');
 
     // Destination
@@ -357,35 +394,13 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     dctx.fillStyle='#0b1c3a';
     dctx.fillRect(0,0,POSTER_CANVAS_W,POSTER_CANVAS_H);
 
-    // Draw Leaflet canvas into poster at MAP_X (UNCHANGED)
+    // Paste the single, perfectly aligned renderer canvas
     dctx.drawImage(src, 0, 0, src.width, src.height, MAP_X, 0, MAP_W, POSTER_CANVAS_H);
 
-    // --------- ALIGNED OVERLAYS (layer space + MAP_X only) ---------
-    dctx.save();
-    dctx.translate(MAP_X, 0);       // left offset only
-    dctx.lineCap='round'; dctx.lineJoin='round';
-
-    // routes
-    for(const t of trips){
-      if(!t.cities || t.cities.length<2) continue;
-      const pts = t.cities.map(c=>[c.lat,c.lon]);
-      const closed = (pts.length>=3 && Math.hypot(pts[0][0]-pts[pts.length-1][0], pts[0][1]-pts[pts.length-1][1])<0.6);
-      const path=buildSmoothPathAdaptive(pts,{closed});
-      if(!path) continue;
-      drawPathLatLng_layer(dctx, posterMap, path, t.color||'#45a3ff', 3);
-    }
-    // markers
-    for(const t of trips){
-      for(const c of t.cities||[]){
-        const p = posterMap.latLngToLayerPoint([c.lat,c.lon]);
-        drawMarker(dctx, p.x, p.y, 4, '#ffffff', 1, '#ff0000');
-      }
-    }
-    dctx.restore();
-    // --------- /ALIGNED OVERLAYS ---------
-
     // Cleanup
-    posterMap.remove(); work.remove();
+    posterOverlayGroup.remove();
+    posterMap.remove();
+    work.remove();
 
   }catch(err){
     console.error(err);
@@ -433,39 +448,6 @@ function createPosterOverlay(){
   const stage=document.createElement('div'); stage.className='orPosterStage'; stage.appendChild(canvas);
   card.append(top,stage); el.appendChild(card);
   return {el, canvas};
-}
-
-/* Poster-layer drawing (layer space) */
-function drawPathLatLng_layer(ctx, map, path, color, width){
-  ctx.beginPath();
-  for(let i=0;i<path.length;){
-    const cmd = path[i];
-    if(cmd==='M'){
-      const p = map.latLngToLayerPoint(path[i+1]);
-      ctx.moveTo(p.x, p.y);
-      i+=2;
-    }else if(cmd==='C'){
-      const c1 = map.latLngToLayerPoint(path[i+1]);
-      const c2 = map.latLngToLayerPoint(path[i+2]);
-      const p  = map.latLngToLayerPoint(path[i+3]);
-      ctx.bezierCurveTo(c1.x,c1.y,c2.x,c2.y,p.x,p.y);
-      i+=4;
-    }else if(cmd==='Z'){
-      ctx.closePath(); i+=1;
-    }else{
-      i+=1;
-    }
-  }
-  ctx.strokeStyle=color;
-  ctx.lineWidth=width;
-  ctx.stroke();
-}
-
-function drawMarker(ctx, x, y, r, stroke, sw, fill){
-  ctx.beginPath();
-  ctx.arc(x,y,r,0,Math.PI*2);
-  ctx.fillStyle=fill; ctx.fill();
-  ctx.lineWidth=sw; ctx.strokeStyle=stroke; ctx.stroke();
 }
 
 /* ===== Share & feedback ===== */
