@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.130';
+const VERSION = '0.131';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -306,7 +306,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     mapArea.style.height = POSTER_CANVAS_H + 'px';
     work.appendChild(mapArea);
 
-    // Standalone Leaflet map (Canvas renderer)
+    // Standalone Leaflet map (Canvas renderer for poster)
     const posterMap = L.map(mapArea,{
       zoomControl:false,attributionControl:false,
       dragging:false,scrollWheelZoom:false,doubleClickZoom:false,
@@ -327,7 +327,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     }));
 
     const statesLayerPoster = L.geoJSON(statesFC,{
-      renderer: L.canvas(),
+      renderer: L.canvas(), // force Canvas so we can snapshot one renderer
       style: f=>{
         const name=f.properties?.name;
         if(unlocked.has(name)) return {color:'#0b1c3a',weight:2,fillColor:'#ffffff',fillOpacity:1};
@@ -339,23 +339,53 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     // **Width-first fit** (UNCHANGED)
     fitByWidthExact(posterMap, conusBoundsPoster);
 
-    // Ensure states paint
+    // Wait for states to paint
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
 
-    // Reuse the SAME renderer for all poster overlays
+    // Use the SAME renderer for all poster overlays
     const renderer = posterMap.getRenderer(statesLayerPoster);
 
-    // === Plan A: create Leaflet overlays on the poster map ===
-    const posterOverlayGroup = L.layerGroup([], { renderer }).addTo(posterMap);
+    // === Poster overlays on Canvas (polyline + circleMarker) ===
+    const posterOverlayGroup = L.layerGroup().addTo(posterMap);
 
-    // Routes
+    // helper: sample our 'M/C[/Z]' path into LatLng[] for polyline
+    function sampleAdaptivePath(path, segsPerCurve = 28){
+      const pts = [];
+      let pen = null;
+      for (let i=0; i<path.length; ){
+        const cmd = path[i];
+        if (cmd === 'M'){
+          pen = path[i+1]; // [lat, lon]
+          pts.push(pen);
+          i += 2;
+        } else if (cmd === 'C'){
+          const c1 = path[i+1], c2 = path[i+2], p = path[i+3];
+          for (let s=1; s<=segsPerCurve; s++){
+            const t = s/segsPerCurve, mt = 1-t;
+            const lat = mt*mt*mt*pen[0] + 3*mt*mt*t*c1[0] + 3*mt*t*t*c2[0] + t*t*t*p[0];
+            const lon = mt*mt*mt*pen[1] + 3*mt*mt*t*c1[1] + 3*mt*t*t*c2[1] + t*t*t*p[1];
+            pts.push([lat, lon]);
+          }
+          pen = p;
+          i += 4;
+        } else if (cmd === 'Z'){
+          i += 1; // closing optional
+        } else {
+          i += 1;
+        }
+      }
+      return pts;
+    }
+
+    // Routes (as Canvas polylines)
     for (const t of trips) {
       if (!t.cities || t.cities.length < 2) continue;
       const pts = t.cities.map(c => [c.lat, c.lon]);
       const closed = (pts.length>=3 && Math.hypot(pts[0][0]-pts[pts.length-1][0], pts[0][1]-pts[pts.length-1][1])<0.6);
       const path = buildSmoothPathAdaptive(pts, { closed });
       if (!path) continue;
-      L.curve(path, {
+      const sampled = sampleAdaptivePath(path, 28);
+      L.polyline(sampled, {
         color: t.color || '#45a3ff',
         weight: 3,
         opacity: 1,
@@ -364,7 +394,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
       }).addTo(posterOverlayGroup);
     }
 
-    // City markers
+    // City markers (Canvas circleMarker)
     for (const t of trips) {
       for (const c of t.cities || []) {
         L.circleMarker([c.lat, c.lon], {
@@ -379,11 +409,13 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
       }
     }
 
-    // Let Leaflet paint curves + markers
+    // Let overlays paint
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
 
     // Source canvas from the active Canvas renderer
-    const src = (typeof renderer.getContainer === 'function') ? renderer.getContainer() : renderer._container;
+    const src = (typeof renderer.getContainer === 'function')
+      ? renderer.getContainer()
+      : renderer._container;
     if(!(src instanceof HTMLCanvasElement)) throw new Error('Poster renderer canvas not found');
 
     // Destination
@@ -394,7 +426,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     dctx.fillStyle='#0b1c3a';
     dctx.fillRect(0,0,POSTER_CANVAS_W,POSTER_CANVAS_H);
 
-    // Paste the single, perfectly aligned renderer canvas
+    // Paste the single, aligned renderer canvas
     dctx.drawImage(src, 0, 0, src.width, src.height, MAP_X, 0, MAP_W, POSTER_CANVAS_H);
 
     // Cleanup
