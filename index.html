@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.128';
+const VERSION = '0.129';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -360,47 +360,29 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     // Draw Leaflet canvas into poster at MAP_X (UNCHANGED)
     dctx.drawImage(src, 0, 0, src.width, src.height, MAP_X, 0, MAP_W, POSTER_CANVAS_H);
 
-    /* ========= Overlay alignment fix =========
-       Leaflet's Canvas renderer positions its canvas with a CSS transform (translate).
-       Its bitmap coordinates are drawn relative to that internal top-left. We must
-       subtract that same translate from container points so paths/markers line up. */
-    function getRendererTranslateXY(el){
-      const m = getComputedStyle(el).transform;
-      if(!m || m === 'none') return {x:0, y:0};
-      // matrix(a,b,c,d,tx,ty) or matrix3d(..., tx, ty, tz)
-      if(m.startsWith('matrix3d(')){
-        const v = m.slice(9,-1).split(',').map(Number);
-        return {x: v[12]||0, y: v[13]||0};
-      }else if(m.startsWith('matrix(')){
-        const v = m.slice(7,-1).split(',').map(Number);
-        return {x: v[4]||0, y: v[5]||0};
-      }
-      return {x:0, y:0};
-    }
-    const tXY = getRendererTranslateXY(src);
-
-    // Overlays (routes/markers) using the posterMap's projection
+    // --------- ALIGNED OVERLAYS (layer space + MAP_X only) ---------
     dctx.save();
-    // IMPORTANT: shift by (-rendererTranslate) so container points align with the bitmap,
-    // then apply your MAP_X left offset.
-    dctx.translate(MAP_X - tXY.x, -tXY.y);
+    dctx.translate(MAP_X, 0);       // left offset only
     dctx.lineCap='round'; dctx.lineJoin='round';
 
+    // routes
     for(const t of trips){
       if(!t.cities || t.cities.length<2) continue;
       const pts = t.cities.map(c=>[c.lat,c.lon]);
       const closed = (pts.length>=3 && Math.hypot(pts[0][0]-pts[pts.length-1][0], pts[0][1]-pts[pts.length-1][1])<0.6);
       const path=buildSmoothPathAdaptive(pts,{closed});
       if(!path) continue;
-      drawPathLatLng(dctx, posterMap, path, t.color||'#45a3ff', 3);
+      drawPathLatLng_layer(dctx, posterMap, path, t.color||'#45a3ff', 3);
     }
+    // markers
     for(const t of trips){
       for(const c of t.cities||[]){
-        const p = posterMap.latLngToContainerPoint([c.lat,c.lon]);
+        const p = posterMap.latLngToLayerPoint([c.lat,c.lon]);
         drawMarker(dctx, p.x, p.y, 4, '#ffffff', 1, '#ff0000');
       }
     }
     dctx.restore();
+    // --------- /ALIGNED OVERLAYS ---------
 
     // Cleanup
     posterMap.remove(); work.remove();
@@ -453,18 +435,19 @@ function createPosterOverlay(){
   return {el, canvas};
 }
 
-function drawPathLatLng(ctx, map, path, color, width){
+/* Poster-layer drawing (layer space) */
+function drawPathLatLng_layer(ctx, map, path, color, width){
   ctx.beginPath();
   for(let i=0;i<path.length;){
     const cmd = path[i];
     if(cmd==='M'){
-      const p = map.latLngToContainerPoint(path[i+1]);
+      const p = map.latLngToLayerPoint(path[i+1]);
       ctx.moveTo(p.x, p.y);
       i+=2;
     }else if(cmd==='C'){
-      const c1 = map.latLngToContainerPoint(path[i+1]);
-      const c2 = map.latLngToContainerPoint(path[i+2]);
-      const p  = map.latLngToContainerPoint(path[i+3]);
+      const c1 = map.latLngToLayerPoint(path[i+1]);
+      const c2 = map.latLngToLayerPoint(path[i+2]);
+      const p  = map.latLngToLayerPoint(path[i+3]);
       ctx.bezierCurveTo(c1.x,c1.y,c2.x,c2.y,p.x,p.y);
       i+=4;
     }else if(cmd==='Z'){
@@ -477,6 +460,7 @@ function drawPathLatLng(ctx, map, path, color, width){
   ctx.lineWidth=width;
   ctx.stroke();
 }
+
 function drawMarker(ctx, x, y, r, stroke, sw, fill){
   ctx.beginPath();
   ctx.arc(x,y,r,0,Math.PI*2);
