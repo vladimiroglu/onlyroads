@@ -64,7 +64,7 @@ header.is-hidden{transform:translateY(-100%)} header.force-show{transform:transl
 /* City list */
 .list{display:none;margin-top:10px;border:1px dashed var(--panelBorder);border-radius:12px;padding:8px;min-height:60px;position:relative}
 .list.show{display:block}
-.li{display:flex;align-items:center;gap:10px;background:#102652;border:1px solid #233a6b;color:#var(--ink);padding:10px 12px;border-radius:10px;margin:6px 0;cursor:grab}
+.li{display:flex;align-items:center;gap:10px;background:#102652;border:1px solid #233a6b;color: var(--ink);padding:10px 12px;border-radius:10px;margin:6px 0;cursor:grab}
 .li .handle{font-size:18px;opacity:.8}
 .li .name{flex:1}
 .li .remove{background:transparent;border:none;color:#cdd6ff;font-size:18px;cursor:pointer}
@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.127';
+const VERSION = '0.133';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -274,8 +274,13 @@ const POSTER_CANVAS_H = 1920;     // poster height (px)
 const POSTER_LEFT_MARGIN  = 35;   // default left blank (px)
 const POSTER_RIGHT_MARGIN = 35;   // default right blank (px)
 // Explicit overrides (take precedence over margins if set)
-const POSTER_MAP_WIDTH_OVERRIDE = 1200; // e.g., 1010, 1200, 3000
-const POSTER_MAP_X_OVERRIDE     = -60; // e.g., 35, 0, -50
+const POSTER_MAP_WIDTH_OVERRIDE = 1200; // keep as-is (user tuned)
+const POSTER_MAP_X_OVERRIDE     = -60;  // keep as-is (user tuned)
+
+// >>> Poster-only visual sizes <<<
+const POSTER_ROUTE_WEIGHT = 8;   // thicker route lines on poster
+const POSTER_DOT_RADIUS  = 8;    // bigger city dots on poster
+const POSTER_DOT_WEIGHT  = 1.5;  // dot outline thickness on poster
 
 document.getElementById('miSave').addEventListener('click', async ()=>{
   menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
@@ -283,7 +288,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     const overlay = createPosterOverlay();
     document.body.appendChild(overlay.el);
 
-    // Compute final placement
+    // Compute final placement (UNCHANGED)
     const MAP_W = (POSTER_MAP_WIDTH_OVERRIDE != null)
       ? Number(POSTER_MAP_WIDTH_OVERRIDE)
       : (POSTER_CANVAS_W - POSTER_LEFT_MARGIN - POSTER_RIGHT_MARGIN);
@@ -298,7 +303,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     work.style.overflow='hidden';
     document.body.appendChild(work);
 
-    // Map drawing area = exact width you want the map to occupy on the poster
+    // Map drawing area = exact width you want the map to occupy on the poster (UNCHANGED)
     const mapArea = document.createElement('div');
     mapArea.style.position='absolute';
     mapArea.style.left='0px'; mapArea.style.top='0px';
@@ -306,7 +311,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     mapArea.style.height = POSTER_CANVAS_H + 'px';
     work.appendChild(mapArea);
 
-    // Standalone Leaflet map (Canvas renderer)
+    // Standalone Leaflet map (Canvas renderer for poster)
     const posterMap = L.map(mapArea,{
       zoomControl:false,attributionControl:false,
       dragging:false,scrollWheelZoom:false,doubleClickZoom:false,
@@ -327,7 +332,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     }));
 
     const statesLayerPoster = L.geoJSON(statesFC,{
-      renderer: L.canvas(),
+      renderer: L.canvas(), // force Canvas so we can snapshot one renderer
       style: f=>{
         const name=f.properties?.name;
         if(unlocked.has(name)) return {color:'#0b1c3a',weight:2,fillColor:'#ffffff',fillOpacity:1};
@@ -336,18 +341,86 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     }).addTo(posterMap);
 
     const conusBoundsPoster = statesLayerPoster.getBounds();
-    // **Width-first fit**: ensures the map spans the mapArea width
+    // **Width-first fit** (UNCHANGED)
     fitByWidthExact(posterMap, conusBoundsPoster);
 
-    // Wait for canvas to paint
+    // Wait for states to paint
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
 
-    // Source canvas
-    const activeRenderer = posterMap.getRenderer(statesLayerPoster);
-    const src = (typeof activeRenderer.getContainer === 'function')
-                  ? activeRenderer.getContainer()
-                  : activeRenderer._container;
+    // Use the SAME renderer for all poster overlays
+    const renderer = posterMap.getRenderer(statesLayerPoster);
 
+    // === Poster overlays on Canvas (polyline + circleMarker) ===
+    const posterOverlayGroup = L.layerGroup().addTo(posterMap);
+
+    // helper: sample our 'M/C[/Z]' path into LatLng[] for polyline
+    function sampleAdaptivePath(path, segsPerCurve = 28){
+      const pts = [];
+      let pen = null;
+      for (let i=0; i<path.length; ){
+        const cmd = path[i];
+        if (cmd === 'M'){
+          pen = path[i+1]; // [lat, lon]
+          pts.push(pen);
+          i += 2;
+        } else if (cmd === 'C'){
+          const c1 = path[i+1], c2 = path[i+2], p = path[i+3];
+          for (let s=1; s<=segsPerCurve; s++){
+            const t = s/segsPerCurve, mt = 1-t;
+            const lat = mt*mt*mt*pen[0] + 3*mt*mt*t*c1[0] + 3*mt*t*t*c2[0] + t*t*t*p[0];
+            const lon = mt*mt*mt*pen[1] + 3*mt*mt*t*c1[1] + 3*mt*t*t*c2[1] + t*t*t*p[1];
+            pts.push([lat, lon]);
+          }
+          pen = p;
+          i += 4;
+        } else if (cmd === 'Z'){
+          i += 1; // closing optional
+        } else {
+          i += 1;
+        }
+      }
+      return pts;
+    }
+
+    // Routes (as Canvas polylines) — poster-only weights
+    for (const t of trips) {
+      if (!t.cities || t.cities.length < 2) continue;
+      const pts = t.cities.map(c => [c.lat, c.lon]);
+      const closed = (pts.length>=3 && Math.hypot(pts[0][0]-pts[pts.length-1][0], pts[0][1]-pts[pts.length-1][1])<0.6);
+      const path = buildSmoothPathAdaptive(pts, { closed });
+      if (!path) continue;
+      const sampled = sampleAdaptivePath(path, 28);
+      L.polyline(sampled, {
+        color: t.color || '#45a3ff',
+        weight: POSTER_ROUTE_WEIGHT,
+        opacity: 1,
+        interactive: false,
+        renderer
+      }).addTo(posterOverlayGroup);
+    }
+
+    // City markers (Canvas circleMarker) — poster-only sizes
+    for (const t of trips) {
+      for (const c of t.cities || []) {
+        L.circleMarker([c.lat, c.lon], {
+          radius: POSTER_DOT_RADIUS,
+          color: '#ffffff',
+          weight: POSTER_DOT_WEIGHT,
+          fillColor: RED,
+          fillOpacity: 1,
+          interactive: false,
+          renderer
+        }).addTo(posterOverlayGroup);
+      }
+    }
+
+    // Let overlays paint
+    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+
+    // Source canvas from the active Canvas renderer
+    const src = (typeof renderer.getContainer === 'function')
+      ? renderer.getContainer()
+      : renderer._container;
     if(!(src instanceof HTMLCanvasElement)) throw new Error('Poster renderer canvas not found');
 
     // Destination
@@ -358,31 +431,13 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     dctx.fillStyle='#0b1c3a';
     dctx.fillRect(0,0,POSTER_CANVAS_W,POSTER_CANVAS_H);
 
-    // Draw Leaflet canvas into poster at MAP_X (clip occurs naturally at poster edges)
+    // Paste the single, aligned renderer canvas
     dctx.drawImage(src, 0, 0, src.width, src.height, MAP_X, 0, MAP_W, POSTER_CANVAS_H);
 
-    // Overlays (routes/markers) using the posterMap's projection
-    dctx.save();
-    dctx.translate(MAP_X, 0);
-    dctx.lineCap='round'; dctx.lineJoin='round';
-    for(const t of trips){
-      if(!t.cities || t.cities.length<2) continue;
-      const pts = t.cities.map(c=>[c.lat,c.lon]);
-      const closed = (pts.length>=3 && Math.hypot(pts[0][0]-pts[pts.length-1][0], pts[0][1]-pts[pts.length-1][1])<0.6);
-      const path=buildSmoothPathAdaptive(pts,{closed});
-      if(!path) continue;
-      drawPathLatLng(dctx, posterMap, path, t.color||'#45a3ff', 3);
-    }
-    for(const t of trips){
-      for(const c of t.cities||[]){
-        const p = posterMap.latLngToContainerPoint([c.lat,c.lon]);
-        drawMarker(dctx, p.x, p.y, 4, '#ffffff', 1, '#ff0000');
-      }
-    }
-    dctx.restore();
-
     // Cleanup
-    posterMap.remove(); work.remove();
+    posterOverlayGroup.remove();
+    posterMap.remove();
+    work.remove();
 
   }catch(err){
     console.error(err);
@@ -430,37 +485,6 @@ function createPosterOverlay(){
   const stage=document.createElement('div'); stage.className='orPosterStage'; stage.appendChild(canvas);
   card.append(top,stage); el.appendChild(card);
   return {el, canvas};
-}
-
-function drawPathLatLng(ctx, map, path, color, width){
-  ctx.beginPath();
-  for(let i=0;i<path.length;){
-    const cmd = path[i];
-    if(cmd==='M'){
-      const p = map.latLngToContainerPoint(path[i+1]);
-      ctx.moveTo(p.x, p.y);
-      i+=2;
-    }else if(cmd==='C'){
-      const c1 = map.latLngToContainerPoint(path[i+1]);
-      const c2 = map.latLngToContainerPoint(path[i+2]);
-      const p  = map.latLngToContainerPoint(path[i+3]);
-      ctx.bezierCurveTo(c1.x,c1.y,c2.x,c2.y,p.x,p.y);
-      i+=4;
-    }else if(cmd==='Z'){
-      ctx.closePath(); i+=1;
-    }else{
-      i+=1;
-    }
-  }
-  ctx.strokeStyle=color;
-  ctx.lineWidth=width;
-  ctx.stroke();
-}
-function drawMarker(ctx, x, y, r, stroke, sw, fill){
-  ctx.beginPath();
-  ctx.arc(x,y,r,0,Math.PI*2);
-  ctx.fillStyle=fill; ctx.fill();
-  ctx.lineWidth=sw; ctx.strokeStyle=stroke; ctx.stroke();
 }
 
 /* ===== Share & feedback ===== */
@@ -588,26 +612,19 @@ function handlePickIndex(idx){
   input.blur();
 }
 
-/* --- FIX for duplicate adds: single pointer handler + guard --- */
+/* Single pointer handler + guard to avoid duplicate adds */
 let lastPick = { time: 0, idx: -1 };
 function delegatedPickHandler(e){
   const item = e.target.closest('.ac-item');
   if(!item || !ac.contains(item)) return;
-
-  // Prevent synthetic mouse after touch/pointer
   e.preventDefault();
   e.stopPropagation();
-
   const idx = +item.dataset.i;
   const now = performance.now();
-  // If the same item was handled very recently, ignore (defense-in-depth)
   if (idx === lastPick.idx && (now - lastPick.time) < 500) return;
   lastPick = { time: now, idx };
-
   handlePickIndex(idx);
 }
-
-// Use ONLY pointerdown (no mousedown/touchstart), capture to catch early
 ac.addEventListener('pointerdown', delegatedPickHandler, {capture:true});
 
 input.addEventListener('focus', ()=>{ ensureCityBoxVisible(false); resizeAutocompleteForViewport(); keyboardAwarePadding(true); });
@@ -893,3 +910,4 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
+
