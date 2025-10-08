@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.127';
+const VERSION = '0.128';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -274,8 +274,8 @@ const POSTER_CANVAS_H = 1920;     // poster height (px)
 const POSTER_LEFT_MARGIN  = 35;   // default left blank (px)
 const POSTER_RIGHT_MARGIN = 35;   // default right blank (px)
 // Explicit overrides (take precedence over margins if set)
-const POSTER_MAP_WIDTH_OVERRIDE = 1200; // e.g., 1010, 1200, 3000
-const POSTER_MAP_X_OVERRIDE     = -60; // e.g., 35, 0, -50
+const POSTER_MAP_WIDTH_OVERRIDE = 1200; // keep as-is (user tuned)
+const POSTER_MAP_X_OVERRIDE     = -60;  // keep as-is (user tuned)
 
 document.getElementById('miSave').addEventListener('click', async ()=>{
   menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
@@ -283,7 +283,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     const overlay = createPosterOverlay();
     document.body.appendChild(overlay.el);
 
-    // Compute final placement
+    // Compute final placement (UNCHANGED)
     const MAP_W = (POSTER_MAP_WIDTH_OVERRIDE != null)
       ? Number(POSTER_MAP_WIDTH_OVERRIDE)
       : (POSTER_CANVAS_W - POSTER_LEFT_MARGIN - POSTER_RIGHT_MARGIN);
@@ -298,7 +298,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     work.style.overflow='hidden';
     document.body.appendChild(work);
 
-    // Map drawing area = exact width you want the map to occupy on the poster
+    // Map drawing area = exact width you want the map to occupy on the poster (UNCHANGED)
     const mapArea = document.createElement('div');
     mapArea.style.position='absolute';
     mapArea.style.left='0px'; mapArea.style.top='0px';
@@ -336,18 +336,17 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     }).addTo(posterMap);
 
     const conusBoundsPoster = statesLayerPoster.getBounds();
-    // **Width-first fit**: ensures the map spans the mapArea width
+    // **Width-first fit** (UNCHANGED)
     fitByWidthExact(posterMap, conusBoundsPoster);
 
     // Wait for canvas to paint
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
 
-    // Source canvas
+    // Source canvas from the active Canvas renderer
     const activeRenderer = posterMap.getRenderer(statesLayerPoster);
     const src = (typeof activeRenderer.getContainer === 'function')
                   ? activeRenderer.getContainer()
                   : activeRenderer._container;
-
     if(!(src instanceof HTMLCanvasElement)) throw new Error('Poster renderer canvas not found');
 
     // Destination
@@ -358,13 +357,35 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     dctx.fillStyle='#0b1c3a';
     dctx.fillRect(0,0,POSTER_CANVAS_W,POSTER_CANVAS_H);
 
-    // Draw Leaflet canvas into poster at MAP_X (clip occurs naturally at poster edges)
+    // Draw Leaflet canvas into poster at MAP_X (UNCHANGED)
     dctx.drawImage(src, 0, 0, src.width, src.height, MAP_X, 0, MAP_W, POSTER_CANVAS_H);
+
+    /* ========= Overlay alignment fix =========
+       Leaflet's Canvas renderer positions its canvas with a CSS transform (translate).
+       Its bitmap coordinates are drawn relative to that internal top-left. We must
+       subtract that same translate from container points so paths/markers line up. */
+    function getRendererTranslateXY(el){
+      const m = getComputedStyle(el).transform;
+      if(!m || m === 'none') return {x:0, y:0};
+      // matrix(a,b,c,d,tx,ty) or matrix3d(..., tx, ty, tz)
+      if(m.startsWith('matrix3d(')){
+        const v = m.slice(9,-1).split(',').map(Number);
+        return {x: v[12]||0, y: v[13]||0};
+      }else if(m.startsWith('matrix(')){
+        const v = m.slice(7,-1).split(',').map(Number);
+        return {x: v[4]||0, y: v[5]||0};
+      }
+      return {x:0, y:0};
+    }
+    const tXY = getRendererTranslateXY(src);
 
     // Overlays (routes/markers) using the posterMap's projection
     dctx.save();
-    dctx.translate(MAP_X, 0);
+    // IMPORTANT: shift by (-rendererTranslate) so container points align with the bitmap,
+    // then apply your MAP_X left offset.
+    dctx.translate(MAP_X - tXY.x, -tXY.y);
     dctx.lineCap='round'; dctx.lineJoin='round';
+
     for(const t of trips){
       if(!t.cities || t.cities.length<2) continue;
       const pts = t.cities.map(c=>[c.lat,c.lon]);
@@ -588,26 +609,19 @@ function handlePickIndex(idx){
   input.blur();
 }
 
-/* --- FIX for duplicate adds: single pointer handler + guard --- */
+/* Single pointer handler + guard to avoid duplicate adds */
 let lastPick = { time: 0, idx: -1 };
 function delegatedPickHandler(e){
   const item = e.target.closest('.ac-item');
   if(!item || !ac.contains(item)) return;
-
-  // Prevent synthetic mouse after touch/pointer
   e.preventDefault();
   e.stopPropagation();
-
   const idx = +item.dataset.i;
   const now = performance.now();
-  // If the same item was handled very recently, ignore (defense-in-depth)
   if (idx === lastPick.idx && (now - lastPick.time) < 500) return;
   lastPick = { time: now, idx };
-
   handlePickIndex(idx);
 }
-
-// Use ONLY pointerdown (no mousedown/touchstart), capture to catch early
 ac.addEventListener('pointerdown', delegatedPickHandler, {capture:true});
 
 input.addEventListener('focus', ()=>{ ensureCityBoxVisible(false); resizeAutocompleteForViewport(); keyboardAwarePadding(true); });
