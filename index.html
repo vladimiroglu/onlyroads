@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.126';
+const VERSION = '0.127';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -486,7 +486,6 @@ function refreshTripUI(){
 }
 tripSelect.addEventListener('change',()=>{activeTripId=+tripSelect.value||null; renderList(); updateMap(); updateEmptyState(); highlightLegendActive();});
 
-/* Empty state */
 function updateEmptyState(){
   const hasTrip = trips.length>0;
   belowHint.style.display = hasTrip ? 'none' : 'block';
@@ -588,17 +587,28 @@ function handlePickIndex(idx){
   addCity(it);
   input.blur();
 }
+
+/* --- FIX for duplicate adds: single pointer handler + guard --- */
+let lastPick = { time: 0, idx: -1 };
 function delegatedPickHandler(e){
   const item = e.target.closest('.ac-item');
   if(!item || !ac.contains(item)) return;
+
+  // Prevent synthetic mouse after touch/pointer
   e.preventDefault();
   e.stopPropagation();
+
   const idx = +item.dataset.i;
+  const now = performance.now();
+  // If the same item was handled very recently, ignore (defense-in-depth)
+  if (idx === lastPick.idx && (now - lastPick.time) < 500) return;
+  lastPick = { time: now, idx };
+
   handlePickIndex(idx);
 }
+
+// Use ONLY pointerdown (no mousedown/touchstart), capture to catch early
 ac.addEventListener('pointerdown', delegatedPickHandler, {capture:true});
-ac.addEventListener('mousedown', delegatedPickHandler, {capture:true});
-ac.addEventListener('touchstart', delegatedPickHandler, {capture:true, passive:false});
 
 input.addEventListener('focus', ()=>{ ensureCityBoxVisible(false); resizeAutocompleteForViewport(); keyboardAwarePadding(true); });
 input.addEventListener('input', ()=>{
