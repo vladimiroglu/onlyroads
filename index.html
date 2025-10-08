@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.131';
+const VERSION = '0.132';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -276,6 +276,11 @@ const POSTER_RIGHT_MARGIN = 35;   // default right blank (px)
 // Explicit overrides (take precedence over margins if set)
 const POSTER_MAP_WIDTH_OVERRIDE = 1200; // keep as-is (user tuned)
 const POSTER_MAP_X_OVERRIDE     = -60;  // keep as-is (user tuned)
+
+// Poster-only stroke/marker sizes
+const POSTER_ROUTE_WEIGHT = 4;    // (v0.132) was 3
+const POSTER_DOT_RADIUS   = 4.8;  // (v0.132) was 3.5
+const POSTER_DOT_WEIGHT   = 1.25; // (v0.132) was 1
 
 document.getElementById('miSave').addEventListener('click', async ()=>{
   menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
@@ -369,7 +374,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
           pen = p;
           i += 4;
         } else if (cmd === 'Z'){
-          i += 1; // closing optional
+          i += 1; // optional close
         } else {
           i += 1;
         }
@@ -377,7 +382,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
       return pts;
     }
 
-    // Routes (as Canvas polylines)
+    // Routes (as Canvas polylines) — POSTER sizes
     for (const t of trips) {
       if (!t.cities || t.cities.length < 2) continue;
       const pts = t.cities.map(c => [c.lat, c.lon]);
@@ -387,20 +392,20 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
       const sampled = sampleAdaptivePath(path, 28);
       L.polyline(sampled, {
         color: t.color || '#45a3ff',
-        weight: 3,
+        weight: POSTER_ROUTE_WEIGHT,
         opacity: 1,
         interactive: false,
         renderer
       }).addTo(posterOverlayGroup);
     }
 
-    // City markers (Canvas circleMarker)
+    // City markers (Canvas circleMarker) — POSTER sizes
     for (const t of trips) {
       for (const c of t.cities || []) {
         L.circleMarker([c.lat, c.lon], {
-          radius: DOT_RADIUS,
+          radius: POSTER_DOT_RADIUS,
           color: '#ffffff',
-          weight: DOT_WEIGHT,
+          weight: POSTER_DOT_WEIGHT,
           fillColor: RED,
           fillOpacity: 1,
           interactive: false,
@@ -482,20 +487,6 @@ function createPosterOverlay(){
   return {el, canvas};
 }
 
-/* ===== Share & feedback ===== */
-document.getElementById('miShare').addEventListener('click', async ()=>{
-  menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
-  const url=updateShareURL();
-  try{
-    if(navigator.share){ await navigator.share({title:'OnlyRoads',url}); toast('Shared'); }
-    else { await navigator.clipboard.writeText(url); toast('Link copied'); }
-  }catch(e){}
-});
-document.getElementById('miFeedback').addEventListener('click', ()=>{
-  menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
-  location.href=`mailto:?subject=${encodeURIComponent('OnlyRoads feedback')}&body=${encodeURIComponent('Feedback:\n\n')}`;
-});
-
 /* ===== Trips UI ===== */
 function refreshTripUI(){
   tripSelect.innerHTML='';
@@ -556,38 +547,6 @@ document.getElementById('deleteTripBtn').addEventListener('click',()=>{
   trips=trips.filter(x=>x.id!==t.id); activeTripId=trips.length?trips[trips.length-1].id:null;
   recomputeUnlockedFromCities(); updateMap(); renderList(); refreshTripUI(); updateEmptyState(); updateShareURL();
 });
-
-/* ===== Color picker ===== */
-(function initColorPicker(){
-  cpSwatches.innerHTML='';
-  PALETTE.forEach(hex=>{
-    const b=document.createElement('button'); b.className='cp-swatch'; b.style.background=hex; b.setAttribute('aria-label',`Choose ${hex}`);
-    b.addEventListener('click', ()=>applyTripColor(hex,true));
-    cpSwatches.appendChild(b);
-  });
-  function positionPopover(){
-    const r=tripColorBtn.getBoundingClientRect();
-    cp.style.top=`${r.bottom+window.scrollY+8}px`;
-    const maxLeft=window.scrollX+document.documentElement.clientWidth-cp.offsetWidth-8;
-    cp.style.left=`${Math.min(r.left+window.scrollX,maxLeft)}px`;
-  }
-  function openPopover(){ if(cp.hidden){ cp.hidden=false; requestAnimationFrame(()=>{ positionPopover(); }); } }
-  function closePopover(){ cp.hidden=true; }
-  tripColorBtn.addEventListener('click',(e)=>{ e.stopPropagation(); openPopover(); });
-  cpClose.addEventListener('click', closePopover);
-  cpCustom.addEventListener('input', ()=> applyTripColor(cpCustom.value, true));
-  document.addEventListener('click',(e)=>{ if(!cp.hidden && !cp.contains(e.target) && e.target!==tripColorBtn) closePopover(); });
-  document.addEventListener('keydown', (e)=>{ if(!cp.hidden && e.key==='Escape') closePopover();});
-  window.addEventListener('resize', ()=>{ if(!cp.hidden) positionPopover(); });
-  window.applyTripColor=function(hex,persist){
-    const t=getActiveTrip(); if(!t) return;
-    t.color=hex;
-    tripColorChip.style.background=hex;
-    renderLegend();
-    updateMap();
-    if(persist) updateShareURL();
-  };
-})();
 
 /* ===== Autocomplete ===== */
 let acTimer=null;
@@ -803,7 +762,8 @@ function _scaledDx(p1,p2){ const avg=((p1[0]+p2[0])/2)*Math.PI/180; return (p2[1
 function adaptiveTauFor(p1,p2){ const dx=Math.abs(_scaledDx(p1,p2)), dy=Math.abs(p2[0]-p1[0]), d=Math.hypot(dx,dy); const r=dx/(dx+dy+1e-9); let tau=0.62+(r-0.5)*0.36+Math.min(d/5,1)*0.16; return Math.max(0.5,Math.min(0.85,tau)); }
 function _controls(p0,p1,p2,p3,tau){
   const dx10=_scaledDx(p0,p1), dx21=_scaledDx(p1,p2), dx32=_scaledDx(p2,p3);
-  const k=(tau/6)*CURVE_GAIN; const avg1=((p0[0]+p1[0])/2)*Math.PI/180, avg2=((p2[0]+p3[0])/2)*Math.PI/180;
+  const k=(tau/6)* (CURVE_GAIN);
+  const avg1=((p0[0]+p1[0])/2)*Math.PI/180, avg2=((p2[0]+p3[0])/2)*Math.PI/180;
   const c1=[ p1[0]+k*(p2[0]-p0[0]),  p1[1]+k*((dx21+dx10)/(Math.cos(avg1)||1)) ];
   const c2=[ p2[0]-k*(p3[0]-p1[0]),  p2[1]-k*((dx32+dx21)/(Math.cos(avg2)||1)) ];
   return [c1,c2];
