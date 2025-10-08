@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.131';
+const VERSION = '0.133';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -276,6 +276,11 @@ const POSTER_RIGHT_MARGIN = 35;   // default right blank (px)
 // Explicit overrides (take precedence over margins if set)
 const POSTER_MAP_WIDTH_OVERRIDE = 1200; // keep as-is (user tuned)
 const POSTER_MAP_X_OVERRIDE     = -60;  // keep as-is (user tuned)
+
+// >>> Poster-only visual sizes <<<
+const POSTER_ROUTE_WEIGHT = 5;   // thicker route lines on poster
+const POSTER_DOT_RADIUS  = 5;    // bigger city dots on poster
+const POSTER_DOT_WEIGHT  = 1.5;  // dot outline thickness on poster
 
 document.getElementById('miSave').addEventListener('click', async ()=>{
   menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
@@ -377,7 +382,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
       return pts;
     }
 
-    // Routes (as Canvas polylines)
+    // Routes (as Canvas polylines) — poster-only weights
     for (const t of trips) {
       if (!t.cities || t.cities.length < 2) continue;
       const pts = t.cities.map(c => [c.lat, c.lon]);
@@ -387,20 +392,20 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
       const sampled = sampleAdaptivePath(path, 28);
       L.polyline(sampled, {
         color: t.color || '#45a3ff',
-        weight: 3,
+        weight: POSTER_ROUTE_WEIGHT,
         opacity: 1,
         interactive: false,
         renderer
       }).addTo(posterOverlayGroup);
     }
 
-    // City markers (Canvas circleMarker)
+    // City markers (Canvas circleMarker) — poster-only sizes
     for (const t of trips) {
       for (const c of t.cities || []) {
         L.circleMarker([c.lat, c.lon], {
-          radius: DOT_RADIUS,
+          radius: POSTER_DOT_RADIUS,
           color: '#ffffff',
-          weight: DOT_WEIGHT,
+          weight: POSTER_DOT_WEIGHT,
           fillColor: RED,
           fillOpacity: 1,
           interactive: false,
