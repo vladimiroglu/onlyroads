@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.135';
+const VERSION = '0.136';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -394,7 +394,16 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     if(!(src instanceof HTMLCanvasElement)) throw new Error('Poster renderer canvas not found');
 
     const dst = overlay.canvas;
+
+    /* === DPR-AWARE POSTER CANVAS (fix stroke thickness parity) === */
+    const DPR = window.devicePixelRatio || 1;
+    dst.width  = POSTER_CANVAS_W * DPR;
+    dst.height = POSTER_CANVAS_H * DPR;
+    dst.style.width  = POSTER_CANVAS_W + 'px';
+    dst.style.height = POSTER_CANVAS_H + 'px';
     const dctx = dst.getContext('2d');
+    dctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    /* ============================================================ */
 
     dctx.fillStyle='#0b1c3a';
     dctx.fillRect(0,0,POSTER_CANVAS_W,POSTER_CANVAS_H);
@@ -435,8 +444,9 @@ function createPosterOverlay(){
 
   const canvas = document.createElement('canvas');
   canvas.className='orPosterCanvas';
-  canvas.width  = 1080;
-  canvas.height = 1920;
+  // CSS size; actual backing store is set later with DPR in save handler
+  canvas.style.width  = POSTER_CANVAS_W + 'px';
+  canvas.style.height = POSTER_CANVAS_H + 'px';
 
   const dl = document.createElement('button'); dl.className='orPosterBtn'; dl.textContent='Download PNG';
   dl.onclick=()=>{ try{
