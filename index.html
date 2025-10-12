@@ -159,7 +159,14 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
     <select id="tripSelect" class="tripname" aria-label="Select trip"></select>
     <button class="mini" id="tripColorBtn" title="Trip color" aria-label="Trip color"><span id="tripColorChip" class="color-chip"></span></button>
     <button class="mini" id="renameTripBtn" title="Rename trip" aria-label="Rename trip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h4l11-11-4-4L3 17v4z"/><path d="M14 6l4 4"/></svg></button>
-    <button class="mini" id="deleteTripBtn" title="Delete trip" aria-label="Delete trip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14"/></svg></button>
+    <!-- RESTORED TRASH ICON PATH -->
+    <button class="mini" id="deleteTripBtn" title="Delete trip" aria-label="Delete trip">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M3 6h18"/>
+        <path d="M8 6V4h8v2"/>
+        <path d="M6 6l1 14h10l1-14"/>
+      </svg>
+    </button>
   </div>
 
   <div class="controls" id="controls">
@@ -185,7 +192,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.137';
+const VERSION = '0.138';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -318,12 +325,26 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
       const name = c.stateFull; if(name) unlocked.add(name);
     }));
 
+    /* Dedicated renderer with extra padding to avoid edge clipping */
+    const posterRenderer = L.canvas({ padding: 0.5 });
+
     const statesLayerPoster = L.geoJSON(statesFC,{
-      renderer: L.canvas(),
+      renderer: posterRenderer,
+      smoothFactor: 0,
+      interactive: false,
       style: f=>{
         const name=f.properties?.name;
-        if(unlocked.has(name)) return {color:'#0b1c3a',weight:2,fillColor:'#ffffff',fillOpacity:1};
-        return {color:'#ffffff',weight:1,fillColor:'#0b1c3a',fillOpacity:1};
+        const base = unlocked.has(name)
+          ? {color:'#0b1c3a',weight:2}
+          : {color:'#ffffff',weight:1};
+        return {
+          ...base,
+          fillColor: unlocked.has(name) ? '#ffffff' : '#0b1c3a',
+          fillOpacity: 1,
+          opacity: 1,
+          lineJoin: 'miter',
+          lineCap: 'butt'
+        };
       }
     }).addTo(posterMap);
 
@@ -332,8 +353,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
 
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
 
-    const renderer = posterMap.getRenderer(statesLayerPoster);
-    const posterOverlayGroup = L.layerGroup().addTo(posterMap);
+    const posterOverlayGroup = L.layerGroup([], { renderer: posterRenderer }).addTo(posterMap);
 
     function sampleAdaptivePath(path, segsPerCurve = 28){
       const pts = [];
@@ -368,7 +388,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
         weight: POSTER_ROUTE_WEIGHT,
         opacity: 1,
         interactive: false,
-        renderer
+        renderer: posterRenderer
       }).addTo(posterOverlayGroup);
     }
 
@@ -381,37 +401,28 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
           fillColor: RED,
           fillOpacity: 1,
           interactive: false,
-          renderer
+          renderer: posterRenderer
         }).addTo(posterOverlayGroup);
       }
     }
 
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
 
-    const src = (typeof renderer.getContainer === 'function')
-      ? renderer.getContainer()
-      : renderer._container;
+    const src = posterRenderer._container;
     if(!(src instanceof HTMLCanvasElement)) throw new Error('Poster renderer canvas not found');
 
     const dst = overlay.canvas;
 
-    /* === HiDPI copy WITHOUT changing your layout/offsets === */
-    // Keep the poster canvas coordinate system at 1080x1920,
-    // but render its backing store at DPR * current displayed size.
+    /* HiDPI copy (no layout/offset changes) */
     const DPR = window.devicePixelRatio || 1;
-    const rect = dst.getBoundingClientRect(); // current CSS size (responsive)
-    // Match backing store to CSS size * DPR
-    dst.width  = Math.max(1, Math.round(rect.width  * DPR));
-    dst.height = Math.max(1, Math.round(rect.height * DPR));
-    const scaleToCssUnits = (rect.width / POSTER_CANVAS_W);
+    dst.width  = POSTER_CANVAS_W * DPR;
+    dst.height = POSTER_CANVAS_H * DPR;
     const dctx = dst.getContext('2d');
-    // Map poster units (1080x1920) → CSS px, then multiply by DPR
-    dctx.setTransform(DPR * scaleToCssUnits, 0, 0, DPR * scaleToCssUnits, 0, 0);
+    dctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 
     dctx.fillStyle='#0b1c3a';
     dctx.fillRect(0,0,POSTER_CANVAS_W,POSTER_CANVAS_H);
     dctx.drawImage(src, 0, 0, src.width, src.height, MAP_X, 0, MAP_W, POSTER_CANVAS_H);
-    /* ======================================================= */
 
     posterOverlayGroup.remove();
     posterMap.remove();
@@ -448,7 +459,7 @@ function createPosterOverlay(){
 
   const canvas = document.createElement('canvas');
   canvas.className='orPosterCanvas';
-  // Keep intrinsic poster coordinate system (unchanged)
+  // intrinsic coordinate system
   canvas.width  = POSTER_CANVAS_W;
   canvas.height = POSTER_CANVAS_H;
 
