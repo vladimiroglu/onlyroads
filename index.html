@@ -185,25 +185,13 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.134';
+const VERSION = '0.135';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
 });
 
 /* ===== Constants / helpers ===== */
-/* Minimal abbr->full for state styling + old share links */
-const ABBR_TO_NAME={
-  "AL":"Alabama","AK":"Alaska","AZ":"Arizona","AR":"Arkansas","CA":"California","CO":"Colorado","CT":"Connecticut","DE":"Delaware","DC":"District of Columbia","FL":"Florida","GA":"Georgia","HI":"Hawaii","ID":"Idaho","IL":"Illinois","IN":"Indiana","IA":"Iowa","KS":"Kansas","KY":"Kentucky","LA":"Louisiana","ME":"Maine","MD":"Maryland","MA":"Massachusetts","MI":"Michigan","MN":"Minnesota","MS":"Mississippi","MO":"Missouri","MT":"Montana","NE":"Nebraska","NV":"Nevada","NH":"New Hampshire","NJ":"New Jersey","NM":"New Mexico","NY":"New York","NC":"North Carolina","ND":"North Dakota","OH":"Ohio","OK":"Oklahoma","OR":"Oregon","PA":"Pennsylvania","RI":"Rhode Island","SC":"South Carolina","SD":"South Dakota","TN":"Tennessee","TX":"Texas","UT":"Utah","VT":"Vermont","VA":"Virginia","WA":"Washington","WV":"West Virginia","WI":"Wisconsin","WY":"Wyoming"
-};
-function canonicalStateName(n){
-  if(!n) return null;
-  const s=String(n).trim();
-  const up=s.toUpperCase();
-  if(ABBR_TO_NAME[up]) return ABBR_TO_NAME[up];
-  if(["washington, d.c.","district of columbia","washington dc"].includes(s.toLowerCase())) return "District of Columbia";
-  return s;
-}
 const PALETTE=['#45a3ff','#ff6b6b','#ffd166','#06d6a0','#c792ea','#ff9f1c','#00bcd4','#ef476f','#8ac926','#a0a0ff'];
 
 const DOT_RADIUS=3.5, DOT_WEIGHT=1, RED='#ff0000', GREEN='#30e6b6';
@@ -327,8 +315,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
 
     const unlocked = new Set();
     trips.forEach(t=>t.cities.forEach(c=>{
-      const canon = canonicalStateName(c.stateFull||c.stateAbbr);
-      if(canon) unlocked.add(canon);
+      const name = c.stateFull; if(name) unlocked.add(name);
     }));
 
     const statesLayerPoster = L.geoJSON(statesFC,{
@@ -870,8 +857,8 @@ function updateCounter(){ mapCounter.textContent=`${unlockedStates.size}/50`; }
 function recomputeUnlockedFromCities(){
   unlockedStates.clear();
   trips.forEach(t=>t.cities.forEach(c=>{
-    const canon=canonicalStateName(c.stateFull||c.stateAbbr);
-    if(canon && stateLayerByName[canon]) unlockedStates.add(canon);
+    const name=c.stateFull;
+    if(name && stateLayerByName[name]) unlockedStates.add(name);
   }));
   updateCounter(); refreshAllStateStyles();
 }
@@ -943,7 +930,7 @@ function removeCityById(id){
   toast(`Removed ${removed.name}, ${removed.stateAbbr}`);
 }
 
-/* Serialize/share (now preserves both st & sf) */
+/* Serialize/share (store both st & sf going forward) */
 function serializeState(){
   return trips.map(t=>({
     n:t.name,
@@ -959,9 +946,14 @@ function deserializeState(obj){
     const id=++tripCounter;
     const t={id,name:bundle.n||`Trip ${id}`,color:bundle.color||PALETTE[(id-1)%PALETTE.length],cities:[]};
     (bundle.c||[]).forEach(cc=>{
-      const st = cc.st;
-      const sf = cc.sf || ABBR_TO_NAME[st] || null;
-      t.cities.push({id:++cidCounter,name:cc.n,stateAbbr:st,stateFull:sf,lat:+cc.lat,lon:+cc.lon});
+      t.cities.push({
+        id:++cidCounter,
+        name:cc.n,
+        stateAbbr:cc.st,
+        stateFull:cc.sf,   // expect full name in new links
+        lat:+cc.lat,
+        lon:+cc.lon
+      });
     });
     trips.push(t); activeTripId=id;
   });
