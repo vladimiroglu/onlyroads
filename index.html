@@ -159,7 +159,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
     <select id="tripSelect" class="tripname" aria-label="Select trip"></select>
     <button class="mini" id="tripColorBtn" title="Trip color" aria-label="Trip color"><span id="tripColorChip" class="color-chip"></span></button>
     <button class="mini" id="renameTripBtn" title="Rename trip" aria-label="Rename trip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h4l11-11-4-4L3 17v4z"/><path d="M14 6l4 4"/></svg></button>
-    <button class="mini" id="deleteTripBtn" title="Delete trip" aria-label="Delete trip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/></svg></button>
+    <button class="mini" id="deleteTripBtn" title="Delete trip" aria-label="Delete trip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14"/></svg></button>
   </div>
 
   <div class="controls" id="controls">
@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.136';
+const VERSION = '0.137';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -395,19 +395,23 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
 
     const dst = overlay.canvas;
 
-    /* === DPR-AWARE POSTER CANVAS (fix stroke thickness parity) === */
+    /* === HiDPI copy WITHOUT changing your layout/offsets === */
+    // Keep the poster canvas coordinate system at 1080x1920,
+    // but render its backing store at DPR * current displayed size.
     const DPR = window.devicePixelRatio || 1;
-    dst.width  = POSTER_CANVAS_W * DPR;
-    dst.height = POSTER_CANVAS_H * DPR;
-    dst.style.width  = POSTER_CANVAS_W + 'px';
-    dst.style.height = POSTER_CANVAS_H + 'px';
+    const rect = dst.getBoundingClientRect(); // current CSS size (responsive)
+    // Match backing store to CSS size * DPR
+    dst.width  = Math.max(1, Math.round(rect.width  * DPR));
+    dst.height = Math.max(1, Math.round(rect.height * DPR));
+    const scaleToCssUnits = (rect.width / POSTER_CANVAS_W);
     const dctx = dst.getContext('2d');
-    dctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    /* ============================================================ */
+    // Map poster units (1080x1920) → CSS px, then multiply by DPR
+    dctx.setTransform(DPR * scaleToCssUnits, 0, 0, DPR * scaleToCssUnits, 0, 0);
 
     dctx.fillStyle='#0b1c3a';
     dctx.fillRect(0,0,POSTER_CANVAS_W,POSTER_CANVAS_H);
     dctx.drawImage(src, 0, 0, src.width, src.height, MAP_X, 0, MAP_W, POSTER_CANVAS_H);
+    /* ======================================================= */
 
     posterOverlayGroup.remove();
     posterMap.remove();
@@ -444,9 +448,9 @@ function createPosterOverlay(){
 
   const canvas = document.createElement('canvas');
   canvas.className='orPosterCanvas';
-  // CSS size; actual backing store is set later with DPR in save handler
-  canvas.style.width  = POSTER_CANVAS_W + 'px';
-  canvas.style.height = POSTER_CANVAS_H + 'px';
+  // Keep intrinsic poster coordinate system (unchanged)
+  canvas.width  = POSTER_CANVAS_W;
+  canvas.height = POSTER_CANVAS_H;
 
   const dl = document.createElement('button'); dl.className='orPosterBtn'; dl.textContent='Download PNG';
   dl.onclick=()=>{ try{
