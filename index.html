@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.143';
+const VERSION = '0.144';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads.net Beta v${VERSION} - Emin's personal project`;
@@ -254,7 +254,7 @@ kebabBtn.addEventListener('click',(e)=>{
   else { menu.classList.remove('show'); }
   window.OnlyRoadsHeader?.forceShow(willShow);
 });
-window.addEventListener('resize', positionMenu, {passive:true});
+window.addEventListener('resize,', positionMenu, {passive:true});
 window.addEventListener('scroll', positionMenu, {passive:true});
 document.addEventListener('click',e=>{
   const outside=!menu.contains(e.target)&&e.target!==kebabBtn;
@@ -275,8 +275,9 @@ const POSTER_ROUTE_WEIGHT = 10;
 const POSTER_DOT_RADIUS  = 10;
 const POSTER_DOT_WEIGHT  = 3;
 
-// >>> Poster title position control <<<
-const POSTER_TITLE_TOP = 200; // Adjust this to move the entire title block down
+// >>> Poster title & map positioning controls <<<
+const POSTER_TITLE_TOP = 40;      // Adjust to move the title block down
+const POSTER_MAP_Y_OFFSET = -100;    // Adjust to move the whole map vertically on the poster
 
 document.getElementById('miSave').addEventListener('click', async ()=>{
   menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
@@ -401,7 +402,9 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
 
     dctx.fillStyle='#0b1c3a';
     dctx.fillRect(0,0,POSTER_CANVAS_W,POSTER_CANVAS_H);
-    dctx.drawImage(src, 0, 0, src.width, src.height, MAP_X, 0, MAP_W, POSTER_CANVAS_H);
+
+    // draw the map with adjustable Y offset
+    dctx.drawImage(src, 0, 0, src.width, src.height, MAP_X, POSTER_MAP_Y_OFFSET, MAP_W, POSTER_CANVAS_H);
 
     /* ===== Poster title (adjustable Y, aligned bottoms) ===== */
     (function drawPosterTitle(){
@@ -416,7 +419,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
       const smallFontSize = Math.round(leftFontSize * 0.6);
       const gap = 8;
 
-      // Left: two lines (top-aligned, as before)
+      // Left: two lines
       dctx.save();
       dctx.fillStyle = '#e6ecff';
       dctx.textAlign = 'left';
@@ -425,21 +428,18 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
       dctx.fillText('STATES', margin, topY);
       dctx.fillText('UNLOCKED', margin, topY + leftFontSize + lineGap);
 
-      // Right: big number and "/50" with shared alphabetic baseline
-      const baselineY = topY + bigSize; // bottoms align at this y
+      // Right: big number and "/50" bottom-aligned together
+      const baselineY = topY + bigSize;
       const numText = String(count);
 
-      // Measure "/50" in Impact-style smaller font
       dctx.font = `${smallFontSize}px Impact, Haettenschweiler, "Arial Black", Arial, sans-serif`;
       const slashText = '/50';
       const slashWidth = dctx.measureText(slashText).width;
 
-      // Draw "/50" touching the right edge, bottom-aligned
       dctx.textAlign = 'right';
       dctx.textBaseline = 'alphabetic';
       dctx.fillText(slashText, POSTER_CANVAS_W - rightPad, baselineY);
 
-      // Draw big number to the left of "/50"
       dctx.font = `${bigSize}px Impact, Haettenschweiler, "Arial Black", Arial, sans-serif`;
       const numX = (POSTER_CANVAS_W - rightPad) - slashWidth - gap;
       dctx.fillText(numText, numX, baselineY);
@@ -693,9 +693,6 @@ function localSearchCities(q, limit=8){
 
   const scored = [];
   for (const r of CITY_DB){
-    if (qCity && !r.n_norm.includes(qCity)) {
-      if (!qState) continue;
-    }
     const s = scoreCity(qCity, qState, r);
     if (s > 0) scored.push([s, r]);
   }
@@ -958,7 +955,7 @@ function updateMap(){
     });
   });
 
-    trips.forEach(t=>{
+  trips.forEach(t=>{
     if(t.cities.length>1){
       const pts=t.cities.map(c=>[c.lat,c.lon]);
       const closed=isClosed(pts);
@@ -1050,4 +1047,3 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
-
