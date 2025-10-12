@@ -185,10 +185,10 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.140';
+const VERSION = '0.141';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
-  document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
+  document.getElementById('footerNote').textContent = `OnlyRoads.net Beta v${VERSION} - Emin's personal project`;
 });
 
 /* ===== Constants / helpers ===== */
@@ -399,6 +399,15 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     dctx.fillStyle='#0b1c3a';
     dctx.fillRect(0,0,POSTER_CANVAS_W,POSTER_CANVAS_H);
     dctx.drawImage(src, 0, 0, src.width, src.height, MAP_X, 0, MAP_W, POSTER_CANVAS_H);
+
+    /* ===== Poster footer (very bottom, small font) ===== */
+    dctx.save();
+    dctx.font = '20px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif';
+    dctx.fillStyle = '#c9d6ff';
+    dctx.textAlign = 'center';
+    dctx.textBaseline = 'bottom';
+    dctx.fillText(`OnlyRoads.net Beta v${VERSION} - Emin\'s personal project`, POSTER_CANVAS_W/2, POSTER_CANVAS_H - 10);
+    dctx.restore();
 
     posterOverlayGroup.remove();
     posterMap.remove();
