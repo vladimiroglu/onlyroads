@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.145';
+const VERSION = '0.146';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads.net Beta v${VERSION} - Emin's personal project`;
@@ -457,7 +457,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
       const lineGap = 14;            // vertical gap between rows
       const left = POSTER_LEFT_MARGIN;
       const rightLimit = POSTER_CANVAS_W - POSTER_RIGHT_MARGIN;
-      const startY = POSTER_CANVAS_H - 160; // sit above footer
+      const startY = POSTER_CANVAS_H - 500; // sit above footer
 
       dctx.save();
       dctx.textBaseline = 'middle';
@@ -1101,6 +1101,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
+
 
 
 
