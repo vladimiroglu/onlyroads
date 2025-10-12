@@ -192,10 +192,15 @@ document.addEventListener('DOMContentLoaded', ()=>{
 });
 
 /* ===== Constants / helpers ===== */
-const STATE_ABBR={"Alabama":"AL","Alaska":"AK","Arizona":"AZ","Arkansas":"AR","California":"CA","Colorado":"CO","Connecticut":"CT","Delaware":"DE","District of Columbia":"DC","Florida":"FL","Georgia":"GA","Hawaii":"HI","Idaho":"ID","Illinois":"IL","Indiana":"IN","Iowa":"IA","Kansas":"KS","Kentucky":"KY","Louisiana":"LA","Maine":"ME","Maryland":"MD","Massachusetts":"MA","Michigan":"MI","Minnesota":"MN","Mississippi":"MS","Missouri":"MO","Montana":"MT","Nebraska":"NE","Nevada":"NV","New Hampshire":"NH","New Jersey":"NJ","New Mexico":"NM","New York":"NY","North Carolina":"NC","North Dakota":"ND","Ohio":"OH","Oklahoma":"OK","Oregon":"OR","Pennsylvania":"PA","Rhode Island":"RI","South Carolina":"SC","South Dakota":"SD","Tennessee":"TN","Texas":"TX","Utah":"UT","Vermont":"VT","Virginia":"VA","Washington":"WA","West Virginia":"WV","Wisconsin":"WI","Wyoming":"WY"};
-const ABBR_TO_NAME=Object.fromEntries(Object.entries(STATE_ABBR).map(([k,v])=>[v,k]));
-function canonicalStateName(n){ if(!n) return null; const s=String(n).trim();
-  if(STATE_ABBR[s]) return s; const ab=s.toUpperCase(); if(ABBR_TO_NAME[ab]) return ABBR_TO_NAME[ab];
+/* Minimal abbr->full for state styling + old share links */
+const ABBR_TO_NAME={
+  "AL":"Alabama","AK":"Alaska","AZ":"Arizona","AR":"Arkansas","CA":"California","CO":"Colorado","CT":"Connecticut","DE":"Delaware","DC":"District of Columbia","FL":"Florida","GA":"Georgia","HI":"Hawaii","ID":"Idaho","IL":"Illinois","IN":"Indiana","IA":"Iowa","KS":"Kansas","KY":"Kentucky","LA":"Louisiana","ME":"Maine","MD":"Maryland","MA":"Massachusetts","MI":"Michigan","MN":"Minnesota","MS":"Mississippi","MO":"Missouri","MT":"Montana","NE":"Nebraska","NV":"Nevada","NH":"New Hampshire","NJ":"New Jersey","NM":"New Mexico","NY":"New York","NC":"North Carolina","ND":"North Dakota","OH":"Ohio","OK":"Oklahoma","OR":"Oregon","PA":"Pennsylvania","RI":"Rhode Island","SC":"South Carolina","SD":"South Dakota","TN":"Tennessee","TX":"Texas","UT":"Utah","VT":"Vermont","VA":"Virginia","WA":"Washington","WV":"West Virginia","WI":"Wisconsin","WY":"Wyoming"
+};
+function canonicalStateName(n){
+  if(!n) return null;
+  const s=String(n).trim();
+  const up=s.toUpperCase();
+  if(ABBR_TO_NAME[up]) return ABBR_TO_NAME[up];
   if(["washington, d.c.","district of columbia","washington dc"].includes(s.toLowerCase())) return "District of Columbia";
   return s;
 }
@@ -269,18 +274,18 @@ document.addEventListener('click',e=>{
 });
 
 /* ===== Poster (standalone map; width/offset params + width-first fit) ===== */
-const POSTER_CANVAS_W = 1080;     // poster width (px)
-const POSTER_CANVAS_H = 1920;     // poster height (px)
-const POSTER_LEFT_MARGIN  = 35;   // default left blank (px)
-const POSTER_RIGHT_MARGIN = 35;   // default right blank (px)
-// Explicit overrides (take precedence over margins if set)
-const POSTER_MAP_WIDTH_OVERRIDE = 1200; // keep as-is (user tuned)
-const POSTER_MAP_X_OVERRIDE     = -60;  // keep as-is (user tuned)
+const POSTER_CANVAS_W = 1080;
+const POSTER_CANVAS_H = 1920;
+const POSTER_LEFT_MARGIN  = 35;
+const POSTER_RIGHT_MARGIN = 35;
+// Explicit overrides (user tuned)
+const POSTER_MAP_WIDTH_OVERRIDE = 1200;
+const POSTER_MAP_X_OVERRIDE     = -60;
 
 // >>> Poster-only visual sizes <<<
-const POSTER_ROUTE_WEIGHT = 10;   // thicker route lines on poster
-const POSTER_DOT_RADIUS  = 10;    // bigger city dots on poster
-const POSTER_DOT_WEIGHT  = 3;  // dot outline thickness on poster
+const POSTER_ROUTE_WEIGHT = 10;
+const POSTER_DOT_RADIUS  = 10;
+const POSTER_DOT_WEIGHT  = 3;
 
 document.getElementById('miSave').addEventListener('click', async ()=>{
   menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
@@ -288,7 +293,6 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     const overlay = createPosterOverlay();
     document.body.appendChild(overlay.el);
 
-    // Compute final placement (UNCHANGED)
     const MAP_W = (POSTER_MAP_WIDTH_OVERRIDE != null)
       ? Number(POSTER_MAP_WIDTH_OVERRIDE)
       : (POSTER_CANVAS_W - POSTER_LEFT_MARGIN - POSTER_RIGHT_MARGIN);
@@ -296,14 +300,12 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
       ? Number(POSTER_MAP_X_OVERRIDE)
       : POSTER_LEFT_MARGIN;
 
-    // Offscreen poster work area
     const work = document.createElement('div');
     work.style.position='absolute'; work.style.left='-99999px'; work.style.top='-99999px';
     work.style.width=POSTER_CANVAS_W+'px'; work.style.height=POSTER_CANVAS_H+'px';
     work.style.overflow='hidden';
     document.body.appendChild(work);
 
-    // Map drawing area = exact width you want the map to occupy on the poster (UNCHANGED)
     const mapArea = document.createElement('div');
     mapArea.style.position='absolute';
     mapArea.style.left='0px'; mapArea.style.top='0px';
@@ -311,7 +313,6 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     mapArea.style.height = POSTER_CANVAS_H + 'px';
     work.appendChild(mapArea);
 
-    // Standalone Leaflet map (Canvas renderer for poster)
     const posterMap = L.map(mapArea,{
       zoomControl:false,attributionControl:false,
       dragging:false,scrollWheelZoom:false,doubleClickZoom:false,
@@ -320,7 +321,6 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     });
     posterMap.invalidateSize(false);
 
-    // States
     const geo = await fetch("https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json").then(r=>r.json());
     const conus = geo.features.filter(f=>!["Alaska","Hawaii","Puerto Rico"].includes(f.properties.name));
     const statesFC = {type:"FeatureCollection",features:conus};
@@ -332,7 +332,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     }));
 
     const statesLayerPoster = L.geoJSON(statesFC,{
-      renderer: L.canvas(), // force Canvas so we can snapshot one renderer
+      renderer: L.canvas(),
       style: f=>{
         const name=f.properties?.name;
         if(unlocked.has(name)) return {color:'#0b1c3a',weight:2,fillColor:'#ffffff',fillOpacity:1};
@@ -341,28 +341,20 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     }).addTo(posterMap);
 
     const conusBoundsPoster = statesLayerPoster.getBounds();
-    // **Width-first fit** (UNCHANGED)
     fitByWidthExact(posterMap, conusBoundsPoster);
 
-    // Wait for states to paint
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
 
-    // Use the SAME renderer for all poster overlays
     const renderer = posterMap.getRenderer(statesLayerPoster);
-
-    // === Poster overlays on Canvas (polyline + circleMarker) ===
     const posterOverlayGroup = L.layerGroup().addTo(posterMap);
 
-    // helper: sample our 'M/C[/Z]' path into LatLng[] for polyline
     function sampleAdaptivePath(path, segsPerCurve = 28){
       const pts = [];
       let pen = null;
       for (let i=0; i<path.length; ){
         const cmd = path[i];
         if (cmd === 'M'){
-          pen = path[i+1]; // [lat, lon]
-          pts.push(pen);
-          i += 2;
+          pen = path[i+1]; pts.push(pen); i += 2;
         } else if (cmd === 'C'){
           const c1 = path[i+1], c2 = path[i+2], p = path[i+3];
           for (let s=1; s<=segsPerCurve; s++){
@@ -371,18 +363,12 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
             const lon = mt*mt*mt*pen[1] + 3*mt*mt*t*c1[1] + 3*mt*t*t*c2[1] + t*t*t*p[1];
             pts.push([lat, lon]);
           }
-          pen = p;
-          i += 4;
-        } else if (cmd === 'Z'){
-          i += 1; // closing optional
-        } else {
-          i += 1;
-        }
+          pen = p; i += 4;
+        } else if (cmd === 'Z'){ i += 1; } else { i += 1; }
       }
       return pts;
     }
 
-    // Routes (as Canvas polylines) — poster-only weights
     for (const t of trips) {
       if (!t.cities || t.cities.length < 2) continue;
       const pts = t.cities.map(c => [c.lat, c.lon]);
@@ -399,7 +385,6 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
       }).addTo(posterOverlayGroup);
     }
 
-    // City markers (Canvas circleMarker) — poster-only sizes
     for (const t of trips) {
       for (const c of t.cities || []) {
         L.circleMarker([c.lat, c.lon], {
@@ -414,27 +399,20 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
       }
     }
 
-    // Let overlays paint
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
 
-    // Source canvas from the active Canvas renderer
     const src = (typeof renderer.getContainer === 'function')
       ? renderer.getContainer()
       : renderer._container;
     if(!(src instanceof HTMLCanvasElement)) throw new Error('Poster renderer canvas not found');
 
-    // Destination
     const dst = overlay.canvas;
     const dctx = dst.getContext('2d');
 
-    // Background
     dctx.fillStyle='#0b1c3a';
     dctx.fillRect(0,0,POSTER_CANVAS_W,POSTER_CANVAS_H);
-
-    // Paste the single, aligned renderer canvas
     dctx.drawImage(src, 0, 0, src.width, src.height, MAP_X, 0, MAP_W, POSTER_CANVAS_H);
 
-    // Cleanup
     posterOverlayGroup.remove();
     posterMap.remove();
     work.remove();
@@ -447,7 +425,7 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
 
 /* ===== Poster helpers ===== */
 function fitByWidthExact(map, bounds){
-  map.fitBounds(bounds, { padding:[0,0], animate:false }); // seed zoom
+  map.fitBounds(bounds, { padding:[0,0], animate:false });
   const nw = bounds.getNorthWest(), ne = bounds.getNorthEast();
   const pW = map.latLngToLayerPoint(nw);
   const pE = map.latLngToLayerPoint(ne);
@@ -470,12 +448,11 @@ function createPosterOverlay(){
 
   const canvas = document.createElement('canvas');
   canvas.className='orPosterCanvas';
-  canvas.width  = POSTER_CANVAS_W;
-  canvas.height = POSTER_CANVAS_H;
+  canvas.width  = 1080;
+  canvas.height = 1920;
 
   const dl = document.createElement('button'); dl.className='orPosterBtn'; dl.textContent='Download PNG';
-  dl.onclick=()=>{
-    try{
+  dl.onclick=()=>{ try{
       const a=document.createElement('a'); a.href=canvas.toDataURL('image/png'); a.download=`onlyroads_poster_${Date.now()}.png`; a.click();
     }catch(e){ console.error(e); toast('Download failed'); }
   };
@@ -594,14 +571,101 @@ document.getElementById('deleteTripBtn').addEventListener('click',()=>{
   };
 })();
 
-/* ===== Autocomplete ===== */
+/* ===== Offline City DB & Search ===== */
+let CITY_DB = []; // loaded from us_cities.min.json
 let acTimer=null;
 let acItemsCache=[];
 const headerEl = document.querySelector('header');
+
+async function ensureCityDbLoaded(){
+  if (CITY_DB.length) return;
+  try{
+    const res = await fetch('us_cities.min.json', {cache:'force-cache'});
+    CITY_DB = await res.json();
+  }catch(e){
+    console.error('Failed to load city DB', e);
+    CITY_DB = [];
+  }
+}
+
 function headerHeight(){ return headerEl?.getBoundingClientRect().height || 0; }
-function ensureCityBoxVisible(instant=false){ const r=controls.getBoundingClientRect(); const topTarget=(window.scrollY+r.top)-headerHeight()-8; window.scrollTo({top:Math.max(0,topTarget),behavior:instant?'auto':'smooth'}); }
-function resizeAutocompleteForViewport(){ const inputRect=input.getBoundingClientRect(); const vv=window.visualViewport; const viewportBottom=vv?(vv.offsetTop+vv.height):window.innerHeight; const available=Math.max(120,viewportBottom-inputRect.bottom-8); ac.style.maxHeight=`${Math.floor(available)}px`; }
-function keyboardAwarePadding(on){ if(on && window.visualViewport){ const vv=window.visualViewport; const kb=Math.max(0, window.innerHeight - (vv.height||window.innerHeight)); document.body.style.paddingBottom=`${kb+16}px`; }else{ document.body.style.paddingBottom=''; } }
+function ensureCityBoxVisible(instant=false){
+  const r=controls.getBoundingClientRect();
+  const topTarget=(window.scrollY+r.top)-headerHeight()-8;
+  window.scrollTo({top:Math.max(0,topTarget),behavior:instant?'auto':'smooth'});
+}
+function resizeAutocompleteForViewport(){
+  const inputRect=input.getBoundingClientRect();
+  const vv=window.visualViewport;
+  const viewportBottom=vv?(vv.offsetTop+vv.height):window.innerHeight;
+  const available=Math.max(120,viewportBottom-inputRect.bottom-8);
+  ac.style.maxHeight=`${Math.floor(available)}px`;
+}
+function keyboardAwarePadding(on){
+  if(on && window.visualViewport){
+    const vv=window.visualViewport;
+    const kb=Math.max(0, window.innerHeight - (vv.height||window.innerHeight));
+    document.body.style.paddingBottom=`${kb+16}px`;
+  }else{
+    document.body.style.paddingBottom='';
+  }
+}
+
+function parseQuery(q){
+  const s = q.trim().replace(/\s+/g,' ');
+  const parts = s.split(',');
+  const city = (parts[0]||'').trim();
+  const stateQuery = (parts[1]||'').trim();
+  return { city, stateQuery };
+}
+
+// simple accent-strip + lower (mirrors precomputed fields)
+function norm(s){
+  return s.normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+}
+
+function scoreCity(qCity, qState, row){
+  let score = 0;
+  const name = row.n_norm, state = row.sf_norm, st = row.st.toLowerCase();
+
+  if (qCity) {
+    if (name.startsWith(qCity)) score += 100;
+    else if (name.includes(qCity)) score += 30;
+  }
+
+  if (qState) {
+    if (st === qState || state.startsWith(qState)) score += 50;
+    else if (st.startsWith(qState) || state.includes(qState)) score += 20;
+  }
+
+  score += Math.log10((row.pop||1) + 10);
+  return score;
+}
+
+function localSearchCities(q, limit=8){
+  if (!q || q.trim().length < 2) return [];
+  const { city, stateQuery } = parseQuery(q.toLowerCase());
+  const qCity = norm(city);
+  const qState = stateQuery ? norm(stateQuery) : '';
+
+  const scored = [];
+  for (const r of CITY_DB){
+    if (qCity && !r.n_norm.includes(qCity)) {
+      if (!qState) continue;
+    }
+    const s = scoreCity(qCity, qState, r);
+    if (s > 0) scored.push([s, r]);
+  }
+  scored.sort((a,b)=> b[0]-a[0]);
+  return scored.slice(0,limit).map(([_,r])=>({
+    label: `${r.n}, ${r.st}`,
+    name: r.n,
+    stateFull: r.sf,
+    stateAbbr: r.st,
+    lat: r.lat,
+    lon: r.lon
+  }));
+}
 
 function handlePickIndex(idx){
   const it = acItemsCache[idx];
@@ -627,32 +691,34 @@ function delegatedPickHandler(e){
 }
 ac.addEventListener('pointerdown', delegatedPickHandler, {capture:true});
 
-input.addEventListener('focus', ()=>{ ensureCityBoxVisible(false); resizeAutocompleteForViewport(); keyboardAwarePadding(true); });
-input.addEventListener('input', ()=>{
+input.addEventListener('focus', async ()=>{
+  await ensureCityDbLoaded();
+  ensureCityBoxVisible(false);
+  resizeAutocompleteForViewport();
+  keyboardAwarePadding(true);
+});
+input.addEventListener('input', async ()=>{
   const q=input.value.trim();
   if(acTimer)clearTimeout(acTimer);
   if(!q){ac.classList.remove('show');ac.innerHTML='';acItemsCache=[];return;}
-  acTimer=setTimeout(()=>fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=us&limit=6&q=${encodeURIComponent(q)}`)
-    .then(r=>r.json()).then(rows=>{
-      ac.innerHTML='';
-      acItemsCache = rows.map(row=>{
-        const a=row.address||{};
-        const cityName=a.city||a.town||a.village||a.hamlet||row.display_name.split(',')[0];
-        const stateFull=canonicalStateName(a.state||'');
-        const ab=STATE_ABBR[stateFull]||'';
-        if(!cityName||!ab||!stateFull) return null;
-        return {label:`${cityName}, ${ab}`, name:cityName, stateFull, stateAbbr:ab, lat:+row.lat, lon:+row.lon};
-      }).filter(Boolean);
-      if(!acItemsCache.length){ac.classList.remove('show');return;}
-      acItemsCache.forEach((it,idx)=>{
-        const d=document.createElement('div');
-        d.className='ac-item';
-        d.dataset.i = String(idx);
-        d.textContent=it.label;
-        ac.appendChild(d);
-      });
-      ac.classList.add('show'); resizeAutocompleteForViewport(); ensureCityBoxVisible(true);
-    }).catch(()=>{}),200);
+  acTimer=setTimeout(async ()=>{
+    await ensureCityDbLoaded();
+    const items = localSearchCities(q, 8);
+    ac.innerHTML='';
+    acItemsCache = items;
+    if(!acItemsCache.length){ac.classList.remove('show');return;}
+    acItemsCache.forEach((it,idx)=>{
+      const d=document.createElement('div');
+      d.className='ac-item';
+      d.dataset.i = String(idx);
+      d.setAttribute('role','option');
+      d.textContent=it.label; // SAFE
+      ac.appendChild(d);
+    });
+    ac.classList.add('show');
+    resizeAutocompleteForViewport();
+    ensureCityBoxVisible(true);
+  },200);
 });
 input.addEventListener('blur', ()=>{ setTimeout(()=>{ ac.classList.remove('show'); keyboardAwarePadding(false); },150); });
 if (window.visualViewport) {
@@ -673,10 +739,13 @@ function renderList(){
   else emptyListHint.style.display='none';
   t.cities.forEach(c=>{
     const row=document.createElement('div'); row.className='li'; row.dataset.id=c.id;
-    row.innerHTML=`<div class="handle">⋮⋮</div><div class="name">${c.name}, ${c.stateAbbr}</div><button class="remove">×</button>`;
-    row.querySelector('.remove').onclick=(ev)=>{ev.stopPropagation(); removeCityById(c.id)};
+    const handle=document.createElement('div'); handle.className='handle'; handle.textContent='⋮⋮';
+    const name=document.createElement('div'); name.className='name'; name.textContent=`${c.name}, ${c.stateAbbr}`;
+    const remove=document.createElement('button'); remove.className='remove'; remove.type='button'; remove.textContent='×';
+    remove.onclick=(ev)=>{ev.stopPropagation(); removeCityById(c.id)};
     row.addEventListener('click',(ev)=>{ if(ev.target.closest('.remove'))return; selectedId=(selectedId===c.id?null:c.id); updateSelectionVisuals(); });
     if(selectedId===c.id) row.classList.add('li-selected');
+    row.append(handle,name,remove);
     list.appendChild(row);
   });
 }
@@ -690,6 +759,7 @@ function renderLegend(){
     btn.className='item'; btn.type='button';
     btn.setAttribute('data-id', t.id);
     btn.setAttribute('aria-label', `Switch to ${t.name}`);
+    btn.setAttribute('role','button');
     btn.setAttribute('aria-pressed', String(t.id===activeTripId));
     btn.innerHTML=`<span class="chip" style="background:${t.color}"></span><span>${t.name}</span>`;
     btn.addEventListener('click', ()=> activateTripById(t.id));
@@ -721,7 +791,7 @@ function initMap(){
   map=L.map('map',{
     zoomControl:false,attributionControl:false,
     dragging:false,scrollWheelZoom:false,doubleClickZoom:false,
-    boxZoom:false,keyboard:false,touchZoom:false,worldCopyJump:false,
+    boxZoom:false,keyboard:false,worldCopyJump:false,
     zoomSnap:0, zoomDelta:0.25
   });
   map.createPane('statesPane');
@@ -799,11 +869,14 @@ function updateSelectionVisuals(){
 function updateCounter(){ mapCounter.textContent=`${unlockedStates.size}/50`; }
 function recomputeUnlockedFromCities(){
   unlockedStates.clear();
-  trips.forEach(t=>t.cities.forEach(c=>{ const canon=canonicalStateName(c.stateFull||c.stateAbbr); if(canon && stateLayerByName[canon]) unlockedStates.add(canon); }));
+  trips.forEach(t=>t.cities.forEach(c=>{
+    const canon=canonicalStateName(c.stateFull||c.stateAbbr);
+    if(canon && stateLayerByName[canon]) unlockedStates.add(canon);
+  }));
   updateCounter(); refreshAllStateStyles();
 }
 
-/* Curves (reused for poster path generation) */
+/* Curves */
 function _scaledDx(p1,p2){ const avg=((p1[0]+p2[0])/2)*Math.PI/180; return (p2[1]-p1[1])*Math.cos(avg); }
 function adaptiveTauFor(p1,p2){ const dx=Math.abs(_scaledDx(p1,p2)), dy=Math.abs(p2[0]-p1[0]), d=Math.hypot(dx,dy); const r=dx/(dx+dy+1e-9); let tau=0.62+(r-0.5)*0.36+Math.min(d/5,1)*0.16; return Math.max(0.5,Math.min(0.85,tau)); }
 function _controls(p0,p1,p2,p3,tau){
@@ -870,14 +943,26 @@ function removeCityById(id){
   toast(`Removed ${removed.name}, ${removed.stateAbbr}`);
 }
 
-/* Serialize/share */
-function serializeState(){ return trips.map(t=>({n:t.name,color:t.color,c:t.cities.map(c=>({n:c.name,st:c.stateAbbr,lat:+c.lat.toFixed(5),lon:+c.lon.toFixed(5)}))})); }
+/* Serialize/share (now preserves both st & sf) */
+function serializeState(){
+  return trips.map(t=>({
+    n:t.name,
+    color:t.color,
+    c:t.cities.map(c=>({
+      n:c.name, st:c.stateAbbr, sf:c.stateFull, lat:+c.lat.toFixed(5), lon:+c.lon.toFixed(5)
+    }))
+  }));
+}
 function deserializeState(obj){
   trips=[]; activeTripId=null; tripCounter=0; cidCounter=0; selectedId=null;
   (obj||[]).forEach(bundle=>{
     const id=++tripCounter;
     const t={id,name:bundle.n||`Trip ${id}`,color:bundle.color||PALETTE[(id-1)%PALETTE.length],cities:[]};
-    (bundle.c||[]).forEach(cc=>t.cities.push({id:++cidCounter,name:cc.n,stateAbbr:cc.st,stateFull:ABBR_TO_NAME[cc.st],lat:+cc.lat,lon:+cc.lon}));
+    (bundle.c||[]).forEach(cc=>{
+      const st = cc.st;
+      const sf = cc.sf || ABBR_TO_NAME[st] || null;
+      t.cities.push({id:++cidCounter,name:cc.n,stateAbbr:st,stateFull:sf,lat:+cc.lat,lon:+cc.lon});
+    });
     trips.push(t); activeTripId=id;
   });
   refreshTripUI(); renderList(); recomputeUnlockedFromCities(); updateMap(); updateEmptyState();
@@ -885,7 +970,14 @@ function deserializeState(obj){
 function updateShareURL(){
   const enc = new TextEncoder();
   const serialized = JSON.stringify(serializeState());
-  const b64 = btoa(String.fromCharCode(...enc.encode(serialized)));
+  // avoid huge spread on large data
+  const utf8 = enc.encode(serialized);
+  let binary = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < utf8.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, utf8.subarray(i, i + CHUNK));
+  }
+  const b64 = btoa(binary);
   const url=new URL(location.href);
   const newHash='s='+b64;
   if(url.hash!==('#'+newHash)){
@@ -910,5 +1002,3 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
-
-
