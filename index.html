@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.142';
+const VERSION = '0.143';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads.net Beta v${VERSION} - Emin's personal project`;
@@ -274,6 +274,9 @@ const POSTER_MAP_X_OVERRIDE     = -60;
 const POSTER_ROUTE_WEIGHT = 10;
 const POSTER_DOT_RADIUS  = 10;
 const POSTER_DOT_WEIGHT  = 3;
+
+// >>> Poster title position control <<<
+const POSTER_TITLE_TOP = 40; // Adjust this to move the entire title block down
 
 document.getElementById('miSave').addEventListener('click', async ()=>{
   menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
@@ -400,15 +403,20 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     dctx.fillRect(0,0,POSTER_CANVAS_W,POSTER_CANVAS_H);
     dctx.drawImage(src, 0, 0, src.width, src.height, MAP_X, 0, MAP_W, POSTER_CANVAS_H);
 
-    /* ===== Poster title ===== */
+    /* ===== Poster title (adjustable Y, aligned bottoms) ===== */
     (function drawPosterTitle(){
       const count = unlocked.size;
-      const margin = 35;                 // align with left/right margins
-      const topY = 40;                   // comfortable offset from top
-      const lineGap = 10;
+      const margin = POSTER_LEFT_MARGIN; // left align with map margin
+      const topY = POSTER_TITLE_TOP;     // adjustable
 
-      // Left text: two lines
-      const leftFontSize = 96; // base; right number will be 2*left + gap
+      const lineGap = 10;
+      const leftFontSize = 96;
+      const bigSize = (leftFontSize * 2) + lineGap; // height of two lines combined
+      const rightPad = POSTER_RIGHT_MARGIN;
+      const smallFontSize = Math.round(leftFontSize * 0.6);
+      const gap = 8;
+
+      // Left: two lines (top-aligned, as before)
       dctx.save();
       dctx.fillStyle = '#e6ecff';
       dctx.textAlign = 'left';
@@ -417,26 +425,24 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
       dctx.fillText('STATES', margin, topY);
       dctx.fillText('UNLOCKED', margin, topY + leftFontSize + lineGap);
 
-      // Right side: big number and "/50" touching the right edge
-      const bigSize = (leftFontSize * 2) + lineGap; // same visual height as two left lines combined
-      const rightPad = POSTER_RIGHT_MARGIN;
-      const slashText = '/50';
-      const smallFontSize = Math.round(leftFontSize * 0.6);
+      // Right: big number and "/50" with shared alphabetic baseline
+      const baselineY = topY + bigSize; // bottoms align at this y
+      const numText = String(count);
 
-      // Measure "/50" with its own (smaller) font
-      dctx.font = `${smallFontSize}px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
+      // Measure "/50" in Impact-style smaller font
+      dctx.font = `${smallFontSize}px Impact, Haettenschweiler, "Arial Black", Arial, sans-serif`;
+      const slashText = '/50';
       const slashWidth = dctx.measureText(slashText).width;
 
-      // Draw "/50" flush to the right edge
+      // Draw "/50" touching the right edge, bottom-aligned
       dctx.textAlign = 'right';
-      dctx.fillText(slashText, POSTER_CANVAS_W - rightPad, topY);
+      dctx.textBaseline = 'alphabetic';
+      dctx.fillText(slashText, POSTER_CANVAS_W - rightPad, baselineY);
 
-      // Draw the big number to the left of "/50" with a small gap
-      const gap = 8;
+      // Draw big number to the left of "/50"
       dctx.font = `${bigSize}px Impact, Haettenschweiler, "Arial Black", Arial, sans-serif`;
       const numX = (POSTER_CANVAS_W - rightPad) - slashWidth - gap;
-      const numText = String(count);
-      dctx.fillText(numText, numX, topY);
+      dctx.fillText(numText, numX, baselineY);
 
       dctx.restore();
     })();
@@ -952,7 +958,7 @@ function updateMap(){
     });
   });
 
-  trips.forEach(t=>{
+    trips.forEach(t=>{
     if(t.cities.length>1){
       const pts=t.cities.map(c=>[c.lat,c.lon]);
       const closed=isClosed(pts);
