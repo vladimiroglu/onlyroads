@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.141';
+const VERSION = '0.142';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads.net Beta v${VERSION} - Emin's personal project`;
@@ -399,6 +399,47 @@ document.getElementById('miSave').addEventListener('click', async ()=>{
     dctx.fillStyle='#0b1c3a';
     dctx.fillRect(0,0,POSTER_CANVAS_W,POSTER_CANVAS_H);
     dctx.drawImage(src, 0, 0, src.width, src.height, MAP_X, 0, MAP_W, POSTER_CANVAS_H);
+
+    /* ===== Poster title ===== */
+    (function drawPosterTitle(){
+      const count = unlocked.size;
+      const margin = 35;                 // align with left/right margins
+      const topY = 40;                   // comfortable offset from top
+      const lineGap = 10;
+
+      // Left text: two lines
+      const leftFontSize = 96; // base; right number will be 2*left + gap
+      dctx.save();
+      dctx.fillStyle = '#e6ecff';
+      dctx.textAlign = 'left';
+      dctx.textBaseline = 'top';
+      dctx.font = `${leftFontSize}px Impact, Haettenschweiler, "Arial Black", Arial, sans-serif`;
+      dctx.fillText('STATES', margin, topY);
+      dctx.fillText('UNLOCKED', margin, topY + leftFontSize + lineGap);
+
+      // Right side: big number and "/50" touching the right edge
+      const bigSize = (leftFontSize * 2) + lineGap; // same visual height as two left lines combined
+      const rightPad = POSTER_RIGHT_MARGIN;
+      const slashText = '/50';
+      const smallFontSize = Math.round(leftFontSize * 0.6);
+
+      // Measure "/50" with its own (smaller) font
+      dctx.font = `${smallFontSize}px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
+      const slashWidth = dctx.measureText(slashText).width;
+
+      // Draw "/50" flush to the right edge
+      dctx.textAlign = 'right';
+      dctx.fillText(slashText, POSTER_CANVAS_W - rightPad, topY);
+
+      // Draw the big number to the left of "/50" with a small gap
+      const gap = 8;
+      dctx.font = `${bigSize}px Impact, Haettenschweiler, "Arial Black", Arial, sans-serif`;
+      const numX = (POSTER_CANVAS_W - rightPad) - slashWidth - gap;
+      const numText = String(count);
+      dctx.fillText(numText, numX, topY);
+
+      dctx.restore();
+    })();
 
     /* ===== Poster footer (very bottom, small font) ===== */
     dctx.save();
