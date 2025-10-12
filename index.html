@@ -185,7 +185,7 @@ footer{color:#9fb0df65;text-align:center;font-size:12px;padding:10px 0 16px}
 
 <script>
 /* ===== Version constant ===== */
-const VERSION = '0.133';
+const VERSION = '0.134';
 document.addEventListener('DOMContentLoaded', ()=>{
   document.title = `OnlyRoads — Beta v${VERSION}`;
   document.getElementById('footerNote').textContent = `OnlyRoads Beta v${VERSION} - Emin's personal project`;
@@ -278,9 +278,9 @@ const POSTER_MAP_WIDTH_OVERRIDE = 1200; // keep as-is (user tuned)
 const POSTER_MAP_X_OVERRIDE     = -60;  // keep as-is (user tuned)
 
 // >>> Poster-only visual sizes <<<
-const POSTER_ROUTE_WEIGHT = 8;   // thicker route lines on poster
-const POSTER_DOT_RADIUS  = 8;    // bigger city dots on poster
-const POSTER_DOT_WEIGHT  = 1.5;  // dot outline thickness on poster
+const POSTER_ROUTE_WEIGHT = 10;   // thicker route lines on poster
+const POSTER_DOT_RADIUS  = 10;    // bigger city dots on poster
+const POSTER_DOT_WEIGHT  = 3;  // dot outline thickness on poster
 
 document.getElementById('miSave').addEventListener('click', async ()=>{
   menu.classList.remove('show'); window.OnlyRoadsHeader?.forceShow(false);
@@ -910,4 +910,5 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
+
 
